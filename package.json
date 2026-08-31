@@ -1,0 +1,12 @@
+{
+  "name": "pi-siliconflow",
+  "private": true,
+  "version": "0.1.0",
+  "description": "SiliconFlow provider extension for pi coding agent",
+  "type": "module",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
