@@ -2,12 +2,14 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createProvider } from "@earendil-works/pi-ai";
 import { stream, streamSimple } from "@earendil-works/pi-ai/compat";
 
+const BASE_URL = "https://api.siliconflow.cn/v1";
+
 export default function (pi: ExtensionAPI) {
   pi.registerProvider(
     createProvider({
       id: "siliconflow",
       name: "SiliconFlow",
-      baseUrl: "https://api.siliconflow.cn/v1",
+      baseUrl: BASE_URL,
       auth: {
         apiKey: {
           name: "SiliconFlow API key",
@@ -15,7 +17,7 @@ export default function (pi: ExtensionAPI) {
           async login(interaction) {
             interaction.notify({
               type: "info",
-              message: "Создайте ключ на странице API Keys в SiliconFlow",
+              message: "Create a key on the SiliconFlow API Keys page:",
               links: [
                 { url: "https://cloud.siliconflow.cn/account/ak", label: "SiliconFlow API Keys" },
               ],
@@ -44,13 +46,14 @@ export default function (pi: ExtensionAPI) {
           name: "DeepSeek V4 Flash (SiliconFlow)",
           api: "openai-completions",
           provider: "siliconflow",
-          baseUrl: "https://api.siliconflow.cn/v1",
+          baseUrl: BASE_URL,
           reasoning: true,
           input: ["text"],
+          // Pricing not verified against SiliconFlow pricing page — zeros to avoid false cost reports.
           cost: {
-            input: 0.14,
-            output: 0.28,
-            cacheRead: 0.014,
+            input: 0,
+            output: 0,
+            cacheRead: 0,
             cacheWrite: 0,
           },
           contextWindow: 256000,
