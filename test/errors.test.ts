@@ -1,0 +1,116 @@
+/**
+ * The safety property that matters here is negative: the rewritten message must
+ * not be reclassified by pi. A wording slip could turn a permanent 401 into an
+ * endless retry loop, or trigger context compaction on an auth failure. Both
+ * assertions below run against pi's real classifiers, not a copy of them.
+ */
+
+import assert from "node:assert/strict";
+import test, { describe } from "node:test";
+import { getOverflowPatterns, isContextOverflow, isRetryableAssistantError } from "@earendil-works/pi-ai";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { clarifyErrorMessage, shouldClarify } from "../errors.ts";
+import { PROVIDER_ID } from "../models.ts";
+
+const ORIGINAL = "401 status code (no body)";
+
+function assistant(errorMessage: string): AssistantMessage {
+  return {
+    role: "assistant",
+    content: [],
+    api: "openai-completions",
+    provider: PROVIDER_ID,
+    model: "deepseek-ai/DeepSeek-V4-Flash",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "error",
+    errorMessage,
+    timestamp: Date.now(),
+  };
+}
+
+describe("clarifyErrorMessage", () => {
+  test("explains a body-less auth failure and keeps the original", () => {
+    const out = clarifyErrorMessage(ORIGINAL);
+    assert.ok(out, "expected a rewrite");
+    assert.match(out!, /401/);
+    assert.match(out!, /invalid, revoked or expired/i);
+    assert.match(out!, /no remaining balance/i);
+    assert.match(out!, /\/login siliconflow/);
+    assert.match(out!, /SILICONFLOW_API_KEY/);
+    assert.ok(out!.includes(ORIGINAL), "original text must survive for debugging");
+  });
+
+  test("covers 402 and 403 too", () => {
+    for (const status of ["401", "402", "403"]) {
+      assert.ok(clarifyErrorMessage(`${status} status code (no body)`), status);
+    }
+  });
+
+  test("tolerates surrounding whitespace", () => {
+    assert.ok(clarifyErrorMessage(`  ${ORIGINAL}\n`));
+  });
+
+  test("leaves every other message untouched", () => {
+    for (const message of [
+      "",
+      "400 status code (no body)", // bad request, not auth — the body matters here
+      "404 status code (no body)",
+      "429 status code (no body)", // rate limit: pi must retry, not explain
+      "500 status code (no body)",
+      "401 {\"code\":20012,\"message\":\"Api key is invalid\"}", // body already surfaced
+      "Api key is invalid",
+      "fetch failed",
+      "The model is offline",
+    ]) {
+      assert.equal(clarifyErrorMessage(message), undefined, JSON.stringify(message));
+    }
+  });
+
+  test("the rewrite is not retryable — a dead key must fail fast", () => {
+    const out = clarifyErrorMessage(ORIGINAL)!;
+    assert.equal(isRetryableAssistantError(assistant(out)), false);
+    // Sanity check the classifier is actually live in this test run.
+    assert.equal(isRetryableAssistantError(assistant("429 Too Many Requests")), true);
+  });
+
+  test("the original 401 was not retryable either, so behaviour is unchanged", () => {
+    assert.equal(isRetryableAssistantError(assistant(ORIGINAL)), false);
+  });
+
+  test("the rewrite is not mistaken for a context overflow", () => {
+    const out = clarifyErrorMessage(ORIGINAL)!;
+    assert.equal(isContextOverflow(assistant(out), 1_048_576), false);
+    for (const pattern of getOverflowPatterns()) {
+      assert.equal(pattern.test(out), false, `rewrite matches overflow pattern ${pattern}`);
+    }
+  });
+});
+
+describe("shouldClarify", () => {
+  test("matches only failed SiliconFlow assistant messages", () => {
+    assert.equal(shouldClarify(assistant(ORIGINAL)), true);
+    assert.equal(shouldClarify({ ...assistant(ORIGINAL), provider: "openai" }), false);
+    assert.equal(shouldClarify({ ...assistant(ORIGINAL), stopReason: "stop" }), false);
+    assert.equal(shouldClarify({ ...assistant(ORIGINAL), role: "user" }), false);
+    assert.equal(shouldClarify({ ...assistant("429 status code (no body)") }), false);
+    assert.equal(shouldClarify({ ...assistant(ORIGINAL), errorMessage: undefined }), false);
+  });
+
+  test("agrees with clarifyErrorMessage", () => {
+    for (const message of [ORIGINAL, "402 status code (no body)", "429 status code (no body)", "boom"]) {
+      const assistantMessage = assistant(message);
+      assert.equal(
+        shouldClarify(assistantMessage),
+        clarifyErrorMessage(message) !== undefined,
+        message,
+      );
+    }
+  });
+});

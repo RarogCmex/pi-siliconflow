@@ -1,12 +1,35 @@
 {
   "name": "pi-siliconflow",
   "private": true,
-  "version": "0.1.0",
-  "description": "SiliconFlow provider extension for pi coding agent",
+  "version": "0.2.0",
+  "description": "SiliconFlow provider for pi — curated catalog with real CNY pricing, correct enable_thinking/reasoning_effort/thinking_budget wiring, /login support, and live discovery of new models.",
   "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "siliconflow",
+    "deepseek",
+    "glm",
+    "kimi",
+    "qwen",
+    "longcat"
+  ],
   "pi": {
     "extensions": [
       "./index.ts"
     ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "test": "node --test",
+    "typecheck": "tsc -p tsconfig.json"
   }
 }
