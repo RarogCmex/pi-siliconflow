@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import { getOverflowPatterns, isContextOverflow, isRetryableAssistantError } from "@earendil-works/pi-ai";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { clarifyErrorMessage, shouldClarify } from "../errors.ts";
+import { clarifyErrorMessage, normalizeOverflowError, shouldClarify } from "../errors.ts";
 import { PROVIDER_ID } from "../models.ts";
 
 const ORIGINAL = "401 status code (no body)";
@@ -112,5 +112,33 @@ describe("shouldClarify", () => {
         message,
       );
     }
+  });
+});
+
+describe("normalizeOverflowError", () => {
+  test("maps overflow phrasing onto pi's compaction marker", () => {
+    assert.match(
+      normalizeOverflowError("This model's maximum context length is 163840 tokens") ?? "",
+      /^context_length_exceeded:/,
+    );
+    assert.match(normalizeOverflowError("prompt is too long") ?? "", /^context_length_exceeded:/);
+    assert.match(normalizeOverflowError("Input tokens exceed the limit") ?? "", /^context_length_exceeded:/);
+  });
+
+  test("does not fire on rate limits or auth failures", () => {
+    assert.equal(normalizeOverflowError("429 Too Many Requests"), null);
+    assert.equal(normalizeOverflowError("Rate limit reached for TPM"), null);
+    assert.equal(normalizeOverflowError(ORIGINAL), null);
+  });
+
+  test("is idempotent and ignores unrelated errors", () => {
+    assert.equal(normalizeOverflowError("context_length_exceeded: already tagged"), null);
+    assert.equal(normalizeOverflowError(""), null);
+    assert.equal(normalizeOverflowError("500 internal server error"), null);
+  });
+
+  test("the rewritten overflow is recognised by pi's classifier", () => {
+    const rewritten = normalizeOverflowError("This model's maximum context length is 163840 tokens")!;
+    assert.equal(isContextOverflow(assistant(rewritten), 163_840), true);
   });
 });

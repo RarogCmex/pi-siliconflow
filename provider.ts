@@ -15,7 +15,22 @@ import {
   type ProviderStreams,
 } from "@earendil-works/pi-ai";
 import { fetchSiliconFlowModels } from "./discovery.ts";
-import { buildModels, cnyPerUsd, DEFAULT_BASE_URL, PROVIDER_ID } from "./models.ts";
+import {
+  buildModels,
+  cnyPerUsd,
+  DEFAULT_BASE_URL,
+  PROVIDER_ID,
+  RESPONSES_ENABLED,
+  type GatewayApi,
+} from "./models.ts";
+
+/** Mixed-API map. Completions is required; responses is optional and omitted
+ *  from the live provider while `RESPONSES_ENABLED` is false, so a stray
+ *  `api: "openai-responses"` fails closed instead of 404ing through the SDK. */
+export type SiliconFlowApis = {
+  "openai-completions": ProviderStreams;
+  "openai-responses"?: ProviderStreams;
+};
 
 export const API_KEYS_URL = "https://cloud.siliconflow.cn/account/ak";
 export const API_KEY_AUTH_NAME = "SiliconFlow API key";
@@ -94,12 +109,25 @@ export function siliconFlowApiKeyAuth(): ApiKeyAuth {
  * persists it through its own ModelsStore, and restores it offline, so a new
  * SiliconFlow release shows up without a catalog edit while a dead key or no
  * network degrades to the baseline.
+ *
+ * `api` is a per-route map. The live entrypoint registers completions only
+ * (`RESPONSES_ENABLED` is false until SiliconFlow ships `/v1/responses`).
  */
+export function buildApiMap(
+  completions: ProviderStreams,
+  responses: ProviderStreams,
+  enabled: boolean = RESPONSES_ENABLED,
+): SiliconFlowApis {
+  const api: SiliconFlowApis = { "openai-completions": completions };
+  if (enabled) api["openai-responses"] = responses;
+  return api;
+}
+
 export function buildSiliconFlowProvider(
-  api: ProviderStreams,
+  api: SiliconFlowApis,
   baseUrl: string = resolveBaseUrl(),
-): Provider {
-  return createProvider({
+): Provider<GatewayApi> {
+  return createProvider<GatewayApi>({
     id: PROVIDER_ID,
     name: "SiliconFlow",
     baseUrl,

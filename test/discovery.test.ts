@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import test, { describe, beforeEach, afterEach } from "node:test";
 import type { RefreshModelsContext } from "@earendil-works/pi-ai";
 import { CATALOG_BY_ID } from "../catalog.ts";
-import { buildOverlay, fetchSiliconFlowModels, parseModelIds } from "../discovery.ts";
+import {
+  buildOverlay,
+  fetchSiliconFlowModels,
+  mergeGatewayCatalog,
+  parseModelIds,
+  SKIP_MODEL_IDS,
+} from "../discovery.ts";
 import { DEFAULT_BASE_URL, PROVIDER_ID, UNKNOWN_MODEL_DEFAULTS } from "../models.ts";
 
 function makeContext(overrides: Partial<RefreshModelsContext> = {}): RefreshModelsContext {
@@ -46,6 +52,8 @@ describe("parseModelIds", () => {
         "FunAudioLLM/SenseVoiceSmall",
         "FunAudioLLM/CosyVoice2-0.5B",
         "PaddlePaddle/PaddleOCR-VL-1.5",
+        "tencent/Hunyuan-MT-7B",
+        "tencent/Hunyuan-A13B-Instruct",
       ),
     );
     assert.deepEqual(ids, ["deepseek-ai/DeepSeek-V3.2"]);
@@ -53,15 +61,11 @@ describe("parseModelIds", () => {
 
   test("passes unfamiliar chat models through for the overlay to pick up", () => {
     // The filter targets modalities, not unknown vendors: a new chat model must
-    // reach buildOverlay() so it can be surfaced with conservative defaults.
+    // reach buildOverlay() so it can be surfaced with family-guessed defaults.
     const ids = parseModelIds(
-      payload("tencent/Hunyuan-MT-7B", "nex-agi/Nex-N2-Pro", "MiniMaxAI/MiniMax-M2.5"),
+      payload("nex-agi/Nex-N2-Pro", "MiniMaxAI/MiniMax-M2.5"),
     );
-    assert.deepEqual(ids, [
-      "tencent/Hunyuan-MT-7B",
-      "nex-agi/Nex-N2-Pro",
-      "MiniMaxAI/MiniMax-M2.5",
-    ]);
+    assert.deepEqual(ids, ["nex-agi/Nex-N2-Pro", "MiniMaxAI/MiniMax-M2.5"]);
   });
 
   test("dedupes", () => {
@@ -108,21 +112,53 @@ describe("buildOverlay", () => {
     assert.deepEqual(buildOverlay(known, DEFAULT_BASE_URL), []);
   });
 
-  test("turns uncatalogued ids into conservative models", () => {
+  test("turns uncatalogued ids into family-guessed models with zero cost", () => {
     const overlay = buildOverlay(["Qwen/Qwen3.8-27B", "tencent/Hy4-preview"], DEFAULT_BASE_URL);
     assert.equal(overlay.length, 2);
     for (const model of overlay) {
       assert.equal(model.provider, PROVIDER_ID);
       assert.equal(model.baseUrl, DEFAULT_BASE_URL);
-      assert.equal(model.contextWindow, UNKNOWN_MODEL_DEFAULTS.contextWindow);
+      assert.equal(model.api, "openai-completions");
       assert.equal(model.cost.input, 0);
-      assert.equal(model.reasoning, false);
     }
+    const qwen = overlay.find((m) => m.id === "Qwen/Qwen3.8-27B")!;
+    assert.equal(qwen.reasoning, true, "Qwen 3.8 inherits sibling thinking");
+    assert.equal(qwen.contextWindow, 262_144);
+    const unknown = overlay.find((m) => m.id === "tencent/Hy4-preview")!;
+    assert.equal(unknown.reasoning, false);
+    assert.equal(unknown.contextWindow, UNKNOWN_MODEL_DEFAULTS.contextWindow);
+  });
+
+  test("skips deprecated and tool-less ids even when they reach the overlay", () => {
+    assert.ok(SKIP_MODEL_IDS.has("tencent/Hunyuan-A13B-Instruct"));
+    assert.deepEqual(
+      buildOverlay(["tencent/Hunyuan-A13B-Instruct", "zai-org/GLM-4.5V"], DEFAULT_BASE_URL).map((m) => m.id),
+      [],
+    );
   });
 
   test("accepts an injected known-set", () => {
     assert.equal(buildOverlay(["a/b"], DEFAULT_BASE_URL, new Set(["a/b"])).length, 0);
     assert.equal(buildOverlay(["a/b"], DEFAULT_BASE_URL, new Set()).length, 1);
+  });
+});
+
+describe("mergeGatewayCatalog", () => {
+  test("is unknowns-only: known catalog ids stay in the baseline", () => {
+    const merged = mergeGatewayCatalog(
+      [{ id: "zai-org/GLM-5.3" }, { id: "Qwen/Qwen3.8-27B" }, { id: "Qwen/Qwen3-Reranker-8B" }],
+      DEFAULT_BASE_URL,
+    );
+    assert.deepEqual(
+      merged.map((m) => m.id),
+      ["Qwen/Qwen3.8-27B"],
+      "catalogued GLM-5.3 and reranker dropped",
+    );
+    assert.equal(merged[0].reasoning, true);
+  });
+
+  test("empty listing yields an empty overlay, not a wiped catalog", () => {
+    assert.deepEqual(mergeGatewayCatalog([], DEFAULT_BASE_URL), []);
   });
 });
 

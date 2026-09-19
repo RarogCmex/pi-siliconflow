@@ -25,6 +25,12 @@
 
 import type { ThinkingLevelMap } from "@earendil-works/pi-ai";
 
+/** SiliconFlow speaks chat completions natively. `openai-responses` is prepared
+ *  (paratera-style mixed-API) but gated behind `RESPONSES_ENABLED` — the public
+ *  .cn/.com gateways 404 on `POST /v1/responses` (probed 2026-09-19; SiliconFlow
+ *  Codex guide: bridge via CC Switch). */
+export type GatewayApi = "openai-responses" | "openai-completions";
+
 /** CNY per 1M tokens. `cacheRead` is SiliconFlow's 缓存价格 column; 0 when "-" (no cache tier). */
 export interface CnyPrice {
   input: number;
@@ -62,6 +68,8 @@ export interface CatalogEntry {
   /** Exact SiliconFlow model id, including any `Pro/` production-tier prefix. */
   id: string;
   name: string;
+  /** Request surface. Omitted ⇒ `openai-completions` (the only working public route). */
+  api?: GatewayApi;
   contextWindow: number;
   maxTokens: number;
   input: ("text" | "image")[];
@@ -83,7 +91,7 @@ const CTX_128K = 131_072;
 const OUT_64K = 65_536;
 
 /** GLM-5.x is "always-on reasoning" with `low` / `high` / `max` effort. */
-const GLM5_EFFORT = {
+export const GLM5_EFFORT = {
   off: null,
   minimal: null,
   low: "low",
@@ -94,7 +102,7 @@ const GLM5_EFFORT = {
 } satisfies ThinkingLevelMap;
 
 /** DeepSeek V4 ships exactly three modes: Non-Think, Think High, Think Max. */
-const DEEPSEEK_V4_EFFORT = {
+export const DEEPSEEK_V4_EFFORT = {
   off: null,
   minimal: null,
   low: null,

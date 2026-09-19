@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
+import type { OpenAICompletionsCompat } from "@earendil-works/pi-ai";
 import { CATALOG, CATALOG_BY_ID } from "../catalog.ts";
 import {
   buildModels,
@@ -8,12 +9,25 @@ import {
   DEFAULT_BASE_URL,
   DEFAULT_CNY_PER_USD,
   entryToModel,
+  guessApi,
+  guessInput,
+  guessResponsesFamily,
+  guessThinking,
+  guessWindows,
   PROVIDER_ID,
+  RESPONSES_ENABLED,
   UNKNOWN_MODEL_DEFAULTS,
   unknownModelToModel,
+  type SiliconFlowModel,
 } from "../models.ts";
 
 const BASE = DEFAULT_BASE_URL;
+
+function chatCompat(model: SiliconFlowModel): OpenAICompletionsCompat {
+  assert.equal(model.api, "openai-completions", model.id);
+  assert.ok(model.compat, model.id);
+  return model.compat as OpenAICompletionsCompat;
+}
 
 /** Assert the conversion matches the true ratio within its rounding precision. */
 function assertCloseToRatio(cny: number) {
@@ -64,11 +78,11 @@ describe("currency conversion", () => {
 });
 
 describe("model construction", () => {
-  test("every catalog entry becomes a well-formed openai-completions model", () => {
+  test("every catalog entry becomes a well-formed model on a registered API", () => {
     const models = buildModels(BASE);
     assert.equal(models.length, CATALOG.length);
     for (const model of models) {
-      assert.equal(model.api, "openai-completions");
+      assert.ok(model.api === "openai-completions" || model.api === "openai-responses", model.id);
       assert.equal(model.provider, PROVIDER_ID);
       assert.equal(model.baseUrl, BASE);
       assert.equal(typeof model.reasoning, "boolean");
@@ -78,9 +92,15 @@ describe("model construction", () => {
     }
   });
 
+  test("the public catalog sits on chat completions (gateway 404s on /responses)", () => {
+    for (const model of buildModels(BASE)) {
+      assert.equal(model.api, "openai-completions", model.id);
+    }
+  });
+
   test("compat overrides the four auto-detected defaults that would break requests", () => {
     for (const model of buildModels(BASE)) {
-      const c = model.compat!;
+      const c = chatCompat(model);
       // Documented request body uses max_tokens, not max_completion_tokens.
       assert.equal(c.maxTokensField, "max_tokens", model.id);
       // Top-level enable_thinking boolean — pi's "qwen" shape.
@@ -106,7 +126,7 @@ describe("model construction", () => {
       const model = entryToModel(entry, BASE, DEFAULT_CNY_PER_USD);
       const expectsEffort = entry.thinking.kind === "effort";
       assert.equal(
-        model.compat!.supportsReasoningEffort,
+        chatCompat(model).supportsReasoningEffort,
         expectsEffort,
         `${entry.id} (${entry.thinking.kind})`,
       );
@@ -146,14 +166,14 @@ describe("model construction", () => {
     assert.ok(budgeted.length > 0, "expected some models to use thinking_budget");
     for (const entry of budgeted) {
       const model = entryToModel(entry, BASE, DEFAULT_CNY_PER_USD);
-      assert.equal(model.compat!.thinkingTokenBudgetField, "thinking_budget", entry.id);
+      assert.equal(chatCompat(model).thinkingTokenBudgetField, "thinking_budget", entry.id);
     }
     for (const entry of CATALOG) {
       const budgeted2 = entry.thinking.kind === "toggle" && entry.thinking.budget;
       if (budgeted2) continue;
       const model = entryToModel(entry, BASE, DEFAULT_CNY_PER_USD);
       // Never combine thinking_budget with reasoning_effort.
-      assert.equal(model.compat!.thinkingTokenBudgetField, undefined, entry.id);
+      assert.equal(chatCompat(model).thinkingTokenBudgetField, undefined, entry.id);
     }
   });
 
@@ -195,21 +215,99 @@ describe("cost", () => {
 });
 
 describe("unknown models", () => {
-  test("discovered-but-uncatalogued models get safe defaults and zero cost", () => {
-    const model = unknownModelToModel("Qwen/Qwen3.8-27B", BASE);
-    assert.equal(model.id, "Qwen/Qwen3.8-27B");
-    assert.equal(model.name, "Qwen3.8-27B", "display name drops the vendor prefix");
+  test("unrecognised families get safe defaults and zero cost", () => {
+    const model = unknownModelToModel("tencent/Hy4-preview", BASE);
+    assert.equal(model.id, "tencent/Hy4-preview");
+    assert.equal(model.name, "Hy4-preview", "display name drops the vendor prefix");
     assert.equal(model.provider, PROVIDER_ID);
-    assert.equal(model.reasoning, false, "do not guess thinking parameters");
+    assert.equal(model.api, "openai-completions");
+    assert.equal(model.reasoning, false, "do not guess thinking parameters for unknown families");
     assert.deepEqual(model.input, ["text"]);
     assert.deepEqual(model.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
     assert.equal(model.contextWindow, UNKNOWN_MODEL_DEFAULTS.contextWindow);
     assert.equal(model.maxTokens, UNKNOWN_MODEL_DEFAULTS.maxTokens);
-    assert.equal(model.compat!.maxTokensField, "max_tokens");
-    assert.equal(model.compat!.thinkingFormat, "qwen");
+    assert.equal(chatCompat(model).maxTokensField, "max_tokens");
+    assert.equal(chatCompat(model).thinkingFormat, "qwen");
   });
 
   test("a small default window makes compaction fire early rather than overflow", () => {
     assert.ok(UNKNOWN_MODEL_DEFAULTS.contextWindow <= 65_536);
+  });
+});
+
+describe("family guessing for the semi-dynamic overlay", () => {
+  test("guessApi is completions while RESPONSES_ENABLED is off", () => {
+    assert.equal(RESPONSES_ENABLED, false);
+    for (const id of [
+      "deepseek-ai/DeepSeek-V4-Flash",
+      "zai-org/GLM-5.4",
+      "Qwen/Qwen3.8-27B",
+      "moonshotai/Kimi-K2.8",
+      "tencent/Hy4-preview",
+    ]) {
+      assert.equal(guessApi(id), "openai-completions", id);
+    }
+  });
+
+  test("guessResponsesFamily keeps the paratera-style routing table dormant", () => {
+    assert.equal(guessResponsesFamily("deepseek-ai/DeepSeek-V4-Flash"), true);
+    assert.equal(guessResponsesFamily("zai-org/GLM-5.4"), true);
+    assert.equal(guessResponsesFamily("Qwen/Qwen3.8-27B"), true);
+    assert.equal(guessResponsesFamily("Pro/moonshotai/Kimi-K2.8"), true);
+    assert.equal(guessResponsesFamily("zai-org/GLM-4.5-Air"), false);
+    assert.equal(guessResponsesFamily("tencent/Hy4-preview"), false);
+    assert.equal(guessResponsesFamily("meituan-longcat/LongCat-2.0"), false);
+  });
+
+  test("Qwen 3.5+ is a hybrid reasoner with vision and a 256K window", () => {
+    const id = "Qwen/Qwen3.8-27B";
+    assert.deepEqual(guessThinking(id), { kind: "toggle", budget: true });
+    assert.deepEqual(guessInput(id), ["text", "image"]);
+    assert.deepEqual(guessWindows(id), { contextWindow: 262_144, maxTokens: 262_144 });
+    const model = unknownModelToModel(id, BASE);
+    assert.equal(model.reasoning, true);
+    assert.equal(chatCompat(model).thinkingTokenBudgetField, "thinking_budget");
+    assert.equal(chatCompat(model).supportsReasoningEffort, false);
+    assert.deepEqual(model.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+  });
+
+  test("DeepSeek V4 inherits the curated effort map and 1M window", () => {
+    const id = "deepseek-ai/DeepSeek-V4.1-Flash";
+    assert.equal(guessThinking(id).kind, "effort");
+    assert.deepEqual(guessWindows(id), { contextWindow: 1_048_576, maxTokens: 393_216 });
+    const model = unknownModelToModel(id, BASE);
+    assert.equal(model.reasoning, true);
+    assert.equal(chatCompat(model).supportsReasoningEffort, true);
+    assert.equal(model.thinkingLevelMap?.high, "high");
+    assert.equal(model.thinkingLevelMap?.max, "max");
+    assert.equal(model.thinkingLevelMap?.off, null);
+  });
+
+  test("GLM-5.x inherits low/high/max effort", () => {
+    const model = unknownModelToModel("zai-org/GLM-5.4", BASE);
+    assert.equal(model.reasoning, true);
+    assert.equal(model.thinkingLevelMap?.low, "low");
+    assert.equal(model.thinkingLevelMap?.off, null);
+    assert.equal(model.contextWindow, 1_048_576);
+  });
+
+  test("Kimi K2 is always-on thinking with vision", () => {
+    const model = unknownModelToModel("moonshotai/Kimi-K2.8-Code", BASE);
+    assert.equal(model.reasoning, true);
+    assert.deepEqual(model.thinkingLevelMap, { off: null });
+    assert.deepEqual(model.input, ["text", "image"]);
+  });
+
+  test("Pro/ prefix does not hide the family", () => {
+    const model = unknownModelToModel("Pro/Qwen/Qwen3.8-27B", BASE);
+    assert.equal(model.name, "Qwen3.8-27B");
+    assert.equal(guessThinking("Pro/Qwen/Qwen3.8-27B").kind, "toggle");
+  });
+
+  test("DeepSeek V3.x is enable_thinking + thinking_budget", () => {
+    const model = unknownModelToModel("deepseek-ai/DeepSeek-V3.3", BASE);
+    assert.equal(model.reasoning, true);
+    assert.equal(chatCompat(model).thinkingTokenBudgetField, "thinking_budget");
+    assert.equal(model.contextWindow, 163_840);
   });
 });

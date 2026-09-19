@@ -14,12 +14,14 @@
 import assert from "node:assert/strict";
 import test, { describe, afterEach } from "node:test";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
+import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import type { Context, Model, ThinkingLevel, Tool } from "@earendil-works/pi-ai";
 import { Type } from "@earendil-works/pi-ai";
 import { CATALOG_BY_ID } from "../catalog.ts";
 import { DEFAULT_BASE_URL, entryToModel, DEFAULT_CNY_PER_USD } from "../models.ts";
 
 const api = openAICompletionsApi();
+const responsesApi = openAIResponsesApi();
 
 const weatherTool: Tool = {
   name: "get_weather",
@@ -32,7 +34,9 @@ const weatherTool: Tool = {
 function model(id: string): Model<"openai-completions"> {
   const entry = CATALOG_BY_ID.get(id);
   assert.ok(entry, `${id} missing from catalog`);
-  return entryToModel(entry, DEFAULT_BASE_URL, DEFAULT_CNY_PER_USD);
+  const built = entryToModel(entry, DEFAULT_BASE_URL, DEFAULT_CNY_PER_USD);
+  assert.equal(built.api, "openai-completions", id);
+  return built as Model<"openai-completions">;
 }
 
 function context(overrides: Partial<Context> = {}): Context {
@@ -229,6 +233,41 @@ describe("non-reasoning models stay quiet", () => {
       assert.equal("thinking_budget" in body, false, id);
       assert.equal("thinking" in body, false, `${id}: deepseek-style thinking object must not appear`);
     }
+  });
+});
+
+describe("dormant openai-responses path (kept, not registered live)", () => {
+  test("a model opted onto responses posts to /v1/responses, not chat/completions", async () => {
+    const entry = CATALOG_BY_ID.get("deepseek-ai/DeepSeek-V4-Flash")!;
+    const target = entryToModel(
+      { ...entry, api: "openai-responses" },
+      DEFAULT_BASE_URL,
+      DEFAULT_CNY_PER_USD,
+    );
+    assert.equal(target.api, "openai-responses");
+
+    let payload: Record<string, any> | undefined;
+    const blocked = new Error("network blocked by test");
+    const stream = responsesApi.streamSimple(target, context(), {
+      apiKey: "sk-test",
+      reasoning: "high",
+      maxTokens: 2048,
+      onPayload: (body) => {
+        payload = body as Record<string, any>;
+        return undefined;
+      },
+      fetch: ((url: any) => {
+        requestedUrl = String(url);
+        throw blocked;
+      }) as unknown as typeof fetch,
+    });
+    for await (const event of stream) {
+      if (event.type === "error" || event.type === "done") break;
+    }
+    assert.ok(payload, "adapter never built a request payload");
+    assert.match(requestedUrl ?? "", /\/responses/);
+    assert.doesNotMatch(requestedUrl ?? "", /chat\/completions/);
+    assert.equal(payload.model, entry.id);
   });
 });
 

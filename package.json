@@ -1,8 +1,8 @@
 {
   "name": "pi-siliconflow",
   "private": true,
-  "version": "0.2.0",
-  "description": "SiliconFlow provider for pi — curated catalog with real CNY pricing, correct enable_thinking/reasoning_effort/thinking_budget wiring, /login support, and live discovery of new models.",
+  "version": "0.3.0",
+  "description": "SiliconFlow provider for pi — curated CNY catalog, family-guessed live overlay, /login support. openai-responses code is present but gated off until the gateway ships it.",
   "type": "module",
   "keywords": [
     "pi-package",

@@ -57,3 +57,21 @@ export function shouldClarify(message: {
     OPAQUE_AUTH_FAILURE.test(message.errorMessage.trim())
   );
 }
+
+/**
+ * Map SiliconFlow overflow phrasing onto pi's `context_length_exceeded` marker
+ * so auto-compaction kicks in. Rate limits must never trigger compaction.
+ * Returns the rewritten text, or null when the error is not an overflow.
+ */
+const CONTEXT_OVERFLOW_RE =
+  /context_length_exceeded|maximum context length|prompt is too long|exceed(?:s|ed)?[^.\n]{0,80}(context|token)|input tokens exceed|Total tokens of image and text exceed|超出.*长度|超过.*长度|max_tokens参数非法/i;
+const RATE_LIMIT_RE =
+  /rate.?limit|too many requests|\b429\b|\bRPM\b|\bTPM\b|\bRPD\b|\bTPD\b|\bquota\b/i;
+
+export function normalizeOverflowError(errorMessage: string): string | null {
+  if (!errorMessage) return null;
+  if (errorMessage.startsWith("context_length_exceeded")) return null;
+  if (RATE_LIMIT_RE.test(errorMessage)) return null;
+  if (!CONTEXT_OVERFLOW_RE.test(errorMessage)) return null;
+  return `context_length_exceeded: ${errorMessage}`;
+}

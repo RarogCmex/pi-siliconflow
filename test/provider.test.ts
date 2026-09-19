@@ -3,23 +3,31 @@ import test, { describe, afterEach } from "node:test";
 import type { AuthContext, ProviderAuthInteraction, ProviderStreams } from "@earendil-works/pi-ai";
 import { CATALOG } from "../catalog.ts";
 import { PROVIDER_ID, DEFAULT_BASE_URL } from "../models.ts";
+import { RESPONSES_ENABLED } from "../models.ts";
 import {
   API_KEY_AUTH_NAME,
   API_KEYS_URL,
   API_KEY_ENV_VAR,
   BASE_URL_ENV_VAR,
+  buildApiMap,
   buildSiliconFlowProvider,
   resolveBaseUrl,
   siliconFlowApiKeyAuth,
+  type SiliconFlowApis,
 } from "../provider.ts";
 
-const stubApi: ProviderStreams = {
+const unused: ProviderStreams = {
   stream: () => {
     throw new Error("not used");
   },
   streamSimple: () => {
     throw new Error("not used");
   },
+};
+
+const stubApis: SiliconFlowApis = {
+  "openai-responses": unused,
+  "openai-completions": unused,
 };
 
 function authContext(env: Record<string, string>): AuthContext {
@@ -163,14 +171,14 @@ describe("api key auth", () => {
 
 describe("buildSiliconFlowProvider", () => {
   test("registers under the expected identity", () => {
-    const provider = buildSiliconFlowProvider(stubApi);
+    const provider = buildSiliconFlowProvider(stubApis);
     assert.equal(provider.id, PROVIDER_ID);
     assert.equal(provider.name, "SiliconFlow");
     assert.equal(provider.baseUrl, DEFAULT_BASE_URL);
   });
 
   test("exposes api-key auth with an interactive login so /login works", () => {
-    const provider = buildSiliconFlowProvider(stubApi);
+    const provider = buildSiliconFlowProvider(stubApis);
     assert.ok(provider.auth.apiKey, "api-key auth must be present");
     assert.equal(provider.auth.oauth, undefined);
     assert.equal(typeof provider.auth.apiKey!.login, "function");
@@ -178,38 +186,65 @@ describe("buildSiliconFlowProvider", () => {
   });
 
   test("serves the whole curated catalog synchronously, with no network", () => {
-    const provider = buildSiliconFlowProvider(stubApi);
+    const provider = buildSiliconFlowProvider(stubApis);
     const models = provider.getModels();
     assert.equal(models.length, CATALOG.length);
     for (const model of models) {
       assert.equal(model.provider, PROVIDER_ID);
+      // Public SiliconFlow 404s on /v1/responses (probed 2026-09-19).
       assert.equal(model.api, "openai-completions");
       assert.equal(model.baseUrl, DEFAULT_BASE_URL);
     }
   });
 
   test("opts into dynamic refresh so new releases appear", () => {
-    assert.equal(typeof buildSiliconFlowProvider(stubApi).refreshModels, "function");
+    assert.equal(typeof buildSiliconFlowProvider(stubApis).refreshModels, "function");
   });
 
   test("propagates a custom base url to every model", () => {
-    const provider = buildSiliconFlowProvider(stubApi, "https://proxy.example.com/sf/v1");
+    const provider = buildSiliconFlowProvider(stubApis, "https://proxy.example.com/sf/v1");
     assert.equal(provider.baseUrl, "https://proxy.example.com/sf/v1");
     for (const model of provider.getModels()) {
       assert.equal(model.baseUrl, "https://proxy.example.com/sf/v1");
     }
   });
 
-  test("uses the injected stream implementation", () => {
-    let used = false;
-    const provider = buildSiliconFlowProvider({
+  test("RESPONSES_ENABLED is off until SiliconFlow ships /v1/responses", () => {
+    assert.equal(RESPONSES_ENABLED, false);
+  });
+
+  test("buildApiMap omits the responses adapter while the flag is off", () => {
+    const off = buildApiMap(unused, unused);
+    assert.equal("openai-completions" in off, true);
+    assert.equal("openai-responses" in off, false);
+    const on = buildApiMap(unused, unused, true);
+    assert.equal(on["openai-responses"], unused);
+  });
+
+  test("dispatches on model.api across both registered surfaces", () => {
+    let completions = 0;
+    let responses = 0;
+    const counting = (which: "completions" | "responses"): ProviderStreams => ({
       stream: () => {
-        used = true;
-        throw new Error("stop");
+        if (which === "completions") completions++;
+        else responses++;
+        throw new Error(which);
       },
-      streamSimple: stubApi.streamSimple,
+      streamSimple: unused.streamSimple,
     });
-    assert.throws(() => provider.stream(provider.getModels()[0], { messages: [] }));
-    assert.equal(used, true);
+    const provider = buildSiliconFlowProvider({
+      "openai-completions": counting("completions"),
+      "openai-responses": counting("responses"),
+    });
+    const chat = provider.getModels()[0];
+    assert.equal(chat.api, "openai-completions");
+    assert.throws(() => provider.stream(chat, { messages: [] }), /completions/);
+    assert.equal(completions, 1);
+    assert.equal(responses, 0);
+
+    const responsesModel = { ...chat, api: "openai-responses" as const };
+    assert.throws(() => provider.stream(responsesModel, { messages: [] }), /responses/);
+    assert.equal(responses, 1);
+    assert.equal(completions, 1);
   });
 });
