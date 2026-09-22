@@ -60,6 +60,13 @@ SiliconFlow возвращает ошибки не в OpenAI-конверте (`
 против настоящих классификаторов pi, поэтому она не превращает постоянную ошибку
 в цикл ретраев и не запускает компакцию контекста.
 
+Дополнительно (pi 0.87+): `turn_end` как actionable boundary добавляет persistent
+`custom_message` (`siliconflow-auth-help`, `display: true`) со ссылкой на
+https://cloud.siliconflow.cn/account/ak и подсказкой `/login siliconflow`.
+Переписывание в `message_end` — транзиентное (только в бабле ошибки), а entry
+в `turn_end` остаётся в истории и не теряется при скролле. На error-исходах
+`continue` сознательно не выставляется — это hard exit.
+
 ## Модели
 
 Каталог — 21 модель, проверенная по публичным страницам SiliconFlow. Это
@@ -82,8 +89,8 @@ SiliconFlow возвращает ошибки не в OpenAI-конверте (`
 | `deepseek-ai/DeepSeek-V4-Pro` | 1M | 384K | | `reasoning_effort` high/max | ¥12/¥24/¥1 |
 | `deepseek-ai/DeepSeek-V3.2` | 160K | 160K | | `enable_thinking` + `thinking_budget` | ¥4/¥6/¥0.4 |
 | `Pro/deepseek-ai/DeepSeek-V3.2` | 160K | 160K | | `enable_thinking` + `thinking_budget` | ¥4/¥6/¥0.4 |
-| `deepseek-ai/DeepSeek-V3.1-Terminus` | 160K | 160K | | `enable_thinking` + `thinking_budget` | ¥4/¥12/¥0.4 |
-| `Pro/deepseek-ai/DeepSeek-V3.1-Terminus` | 160K | 160K | | `enable_thinking` + `thinking_budget` | ¥4/¥12/¥0.4 |
+| `deepseek-ai/DeepSeek-V3.1-Terminus` | 160K | 160K | | `enable_thinking` + `thinking_budget` ‡ | ¥4/¥12/¥0.4 |
+| `Pro/deepseek-ai/DeepSeek-V3.1-Terminus` | 160K | 160K | | `enable_thinking` + `thinking_budget` ‡ | ¥4/¥12/¥0.4 |
 | `zai-org/GLM-5.3` | 1M | 128K | | `reasoning_effort` low/high/max | ¥8/¥28/¥2 |
 | `zai-org/GLM-5.2` | 1M | 128K | | `reasoning_effort` low/high/max | ¥8/¥28/¥2 |
 | `Pro/zai-org/GLM-5.1` | 200K | 128K | | `reasoning_effort` low/high/max | ¥6/¥24/¥1.3 † |
@@ -105,6 +112,12 @@ SiliconFlow возвращает ошибки не в OpenAI-конверте (`
 свыше 128k ¥1.6/¥12.8; `Qwen/Qwen3.5-27B` — свыше 128k ¥1.8/¥14.4. Передано в pi
 через `cost.tiers`.
 
+‡ По докам SiliconFlow `DeepSeek-V3.1` с function calling требует
+`enable_thinking: false`. pi как агент всегда шлёт `tools`, поэтому расширение
+через `before_provider_request` форсит `enable_thinking: false` (и убирает
+`thinking_budget`/`reasoning_effort`) именно когда в запросе есть tools.
+Без tools thinking работает как обычно.
+
 Выбор модели: `/model` внутри pi, либо
 `pi --model siliconflow/deepseek-ai/DeepSeek-V4-Flash`, уровень размышлений —
 `pi --model "siliconflow/zai-org/GLM-5.3:max"`.
@@ -121,6 +134,34 @@ SiliconFlow возвращает ошибки не в OpenAI-конверте (`
   Qwen 3.8 унаследует sibling-эвристику (256K, `enable_thinking` +
   `thinking_budget`, зрение, цена 0); Hy4-preview останется консервативным
   32K/4K без рассуждений.
+
+### Компакшен
+
+По умолчанию pi держит `reserveTokens=16384` и `keepRecentTokens=20000` для всех
+моделей. Для 1M-моделей каталога (`DeepSeek-V4-Flash/Pro`, `zai-org/GLM-5.3/5.2`,
+`meituan-longcat/LongCat-2.0`) это срабатывает слишком поздно: порог
+`contextWindow - reserveTokens` почти упирается в лимит, а саммаризация
+гигантского контекста дорогая.
+
+С pi 0.86+ настройте per-model оверрайды в `~/.pi/agent/settings.json`
+(или `<project>/.pi/settings.json`):
+
+```json
+{
+  "compaction": {
+    "modelOverrides": {
+      "siliconflow/deepseek-ai/DeepSeek-V4-Flash": { "reserveTokens": 64000, "keepRecentTokens": 40000 },
+      "siliconflow/deepseek-ai/DeepSeek-V4-Pro": { "reserveTokens": 64000, "keepRecentTokens": 40000 },
+      "siliconflow/zai-org/GLM-5.3": { "reserveTokens": 64000, "keepRecentTokens": 40000 },
+      "siliconflow/zai-org/GLM-5.2": { "reserveTokens": 64000, "keepRecentTokens": 40000 },
+      "siliconflow/meituan-longcat/LongCat-2.0": { "reserveTokens": 64000, "keepRecentTokens": 40000 }
+    }
+  }
+}
+```
+
+Это раньше запускает компакшен (при ~936K вместо ~983K) и оставляет больше
+свежего контекста для кодинга. Для 128–256K моделей дефолтов достаточно.
 
 ## Цены и валюта
 
@@ -194,7 +235,7 @@ npm test            # node --test (111 тестов, без сети)
 | `discovery.ts` | полудинамический оверлей `GET /v1/models` (unknowns-only, family-guessed) |
 | `errors.ts` | переписывание opaque-401 и overflow → `context_length_exceeded` |
 | `provider.ts` | сборка провайдера, auth, карта API (`openai-responses` опционален) |
-| `index.ts` | точка входа pi: `message_end` + `registerProvider` |
+| `index.ts` | точка входа pi: `message_end` + actionable `turn_end` + `registerProvider` |
 
 `index.ts` — единственное место с импортом, который разрешается только внутри pi:
 загрузчик расширений aliases'ит голый спецификатор `@earendil-works/pi-ai` на

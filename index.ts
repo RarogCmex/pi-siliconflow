@@ -13,6 +13,12 @@
  * bridge via CC Switch). `RESPONSES_ENABLED` gates both the adapter
  * registration and `guessApi`. Conversion / compat / family routing stay in
  * the tree — flip the flag when they ship the route.
+ *
+ * pi 0.87 actionable boundaries: `message_end` still rewrites the opaque
+ * 401 into readable text (fast, test-covered), while `turn_end` appends a
+ * persistent `custom_message` with the key-page link and `/login` hint.
+ * The message rewrite is transient (error bubble only); the boundary entry
+ * stays in history with `display: true` so the fix survives scrolling.
  */
 
 // NOTE on this import: pi's extension loader aliases the bare
@@ -27,7 +33,7 @@
 // load, which is what makes them testable.
 import { openAICompletionsApi, openAIResponsesApi } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { clarifyErrorMessage, normalizeOverflowError, shouldClarify } from "./errors.ts";
+import { clarifyErrorMessage, fixV31ThinkingPayload, normalizeOverflowError, shouldClarify } from "./errors.ts";
 import { PROVIDER_ID, RESPONSES_ENABLED } from "./models.ts";
 import { buildApiMap, buildSiliconFlowProvider } from "./provider.ts";
 
@@ -51,6 +57,49 @@ export default function (pi: ExtensionAPI) {
     const errorMessage = clarifyErrorMessage(message.errorMessage ?? "");
     if (!errorMessage) return;
     return { message: { ...message, errorMessage } };
+  });
+
+  // pi 0.87 actionable boundary: keep the `message_end` rewrite (transient,
+  // in the error bubble), and append a persistent helper entry so the fix
+  // doesn't disappear on scroll. Guarded to error outcome + this provider +
+  // opaque 401/402/403 only; deduped via customType so re-emits don't stack.
+  // Error outcomes are hard exits — no `continue: true` here on purpose.
+  pi.on("turn_end", (event) => {
+    if (event.outcome !== "error") return;
+    const msg = event.message as unknown as {
+      role: string;
+      stopReason?: string;
+      provider?: string;
+      errorMessage?: string;
+    };
+    if (!shouldClarify(msg)) return;
+    if (event.entries.some((e) => (e as { customType?: string }).customType === "siliconflow-auth-help"))
+      return;
+    return {
+      entries: [
+        ...event.entries,
+        {
+          type: "custom_message",
+          customType: "siliconflow-auth-help",
+          content:
+            "SiliconFlow: ключ недействителен, отозван, истёк — либо на балансе нет средств " +
+            "(шлюз отвечает одинаково). Проверьте ключ и баланс: https://cloud.siliconflow.cn/account/ak — " +
+            "затем выполните `/login siliconflow` или обновите `SILICONFLOW_API_KEY`.",
+          display: true,
+        },
+      ],
+    };
+  });
+
+  // SiliconFlow docs: DeepSeek-V3.1 + function calling requires
+  // `enable_thinking: false`. pi as an agent always sends tools, so without
+  // this the V3.1 models would break tool calls when thinking is on.
+  // Narrow: only V3.1 model ids with non-empty tools and thinking enabled.
+  pi.on("before_provider_request", (event) => {
+    const payload = event.payload as Record<string, any> | undefined;
+    if (!payload || typeof payload !== "object") return;
+    const fixed = fixV31ThinkingPayload(payload);
+    if (fixed) return fixed;
   });
 
   pi.registerProvider(

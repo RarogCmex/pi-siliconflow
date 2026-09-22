@@ -15,8 +15,8 @@ import assert from "node:assert/strict";
 import test, { describe, afterEach } from "node:test";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
-import type { Context, Model, ThinkingLevel, Tool } from "@earendil-works/pi-ai";
-import { Type } from "@earendil-works/pi-ai";
+import type { Context, Model, ThinkingLevel, Tool, TranscriptContext } from "@earendil-works/pi-ai";
+import { normalizeContext, Type } from "@earendil-works/pi-ai";
 import { CATALOG_BY_ID } from "../catalog.ts";
 import { DEFAULT_BASE_URL, entryToModel, DEFAULT_CNY_PER_USD } from "../models.ts";
 
@@ -39,12 +39,12 @@ function model(id: string): Model<"openai-completions"> {
   return built as Model<"openai-completions">;
 }
 
-function context(overrides: Partial<Context> = {}): Context {
-  return {
+function context(overrides: Partial<Context> = {}): TranscriptContext {
+  return normalizeContext({
     systemPrompt: "You are pi, a coding agent.",
     messages: [{ role: "user", content: "Say hi.", timestamp: Date.now() }],
     ...overrides,
-  };
+  });
 }
 
 let requestedUrl: string | undefined;

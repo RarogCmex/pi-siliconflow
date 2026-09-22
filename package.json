@@ -1,7 +1,7 @@
 {
   "name": "pi-siliconflow",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "SiliconFlow provider for pi — curated CNY catalog, family-guessed live overlay, /login support. openai-responses code is present but gated off until the gateway ships it.",
   "type": "module",
   "keywords": [

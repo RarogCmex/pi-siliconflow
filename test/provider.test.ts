@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { describe, afterEach } from "node:test";
 import type { AuthContext, ProviderAuthInteraction, ProviderStreams } from "@earendil-works/pi-ai";
+import { normalizeContext } from "@earendil-works/pi-ai";
 import { CATALOG } from "../catalog.ts";
 import { PROVIDER_ID, DEFAULT_BASE_URL } from "../models.ts";
 import { RESPONSES_ENABLED } from "../models.ts";
@@ -238,12 +239,12 @@ describe("buildSiliconFlowProvider", () => {
     });
     const chat = provider.getModels()[0];
     assert.equal(chat.api, "openai-completions");
-    assert.throws(() => provider.stream(chat, { messages: [] }), /completions/);
+    assert.throws(() => provider.stream(chat, normalizeContext({ messages: [] })), /completions/);
     assert.equal(completions, 1);
     assert.equal(responses, 0);
 
     const responsesModel = { ...chat, api: "openai-responses" as const };
-    assert.throws(() => provider.stream(responsesModel, { messages: [] }), /responses/);
+    assert.throws(() => provider.stream(responsesModel, normalizeContext({ messages: [] })), /responses/);
     assert.equal(responses, 1);
     assert.equal(completions, 1);
   });

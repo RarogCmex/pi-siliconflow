@@ -75,3 +75,33 @@ export function normalizeOverflowError(errorMessage: string): string | null {
   if (!CONTEXT_OVERFLOW_RE.test(errorMessage)) return null;
   return `context_length_exceeded: ${errorMessage}`;
 }
+
+/**
+ * SiliconFlow constraint: `DeepSeek-V3.1` with function calling must use
+ * `enable_thinking: false` (docs: api-docs.siliconflow.cn reasoning guide).
+ * pi as an agent always sends `tools`, so a V3.1 model with thinking enabled
+ * would break tool calls.
+ *
+ * Applied via `before_provider_request`: when the payload targets a V3.1 model
+ * and carries tools, force `enable_thinking` off and drop thinking-budget
+ * fields. Returns a new payload when a change was made, otherwise undefined.
+ * Pure and unit-testable — no network needed.
+ */
+const V31_MODEL_RE = /DeepSeek-V3\.1/i;
+
+export function fixV31ThinkingPayload(
+  payload: Record<string, any>,
+): Record<string, any> | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const model = payload.model;
+  if (typeof model !== "string" || !V31_MODEL_RE.test(model)) return undefined;
+  const tools = payload.tools;
+  if (!Array.isArray(tools) || tools.length === 0) return undefined;
+  if (!payload.enable_thinking) return undefined;
+
+  const fixed: Record<string, any> = { ...payload, enable_thinking: false };
+  // Thinking and answer share max_tokens; with thinking off these must not leak.
+  delete fixed.thinking_budget;
+  delete fixed.reasoning_effort;
+  return fixed;
+}

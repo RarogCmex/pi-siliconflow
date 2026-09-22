@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import { getOverflowPatterns, isContextOverflow, isRetryableAssistantError } from "@earendil-works/pi-ai";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { clarifyErrorMessage, normalizeOverflowError, shouldClarify } from "../errors.ts";
+import { clarifyErrorMessage, fixV31ThinkingPayload, normalizeOverflowError, shouldClarify } from "../errors.ts";
 import { PROVIDER_ID } from "../models.ts";
 
 const ORIGINAL = "401 status code (no body)";
@@ -140,5 +140,56 @@ describe("normalizeOverflowError", () => {
   test("the rewritten overflow is recognised by pi's classifier", () => {
     const rewritten = normalizeOverflowError("This model's maximum context length is 163840 tokens")!;
     assert.equal(isContextOverflow(assistant(rewritten), 163_840), true);
+  });
+});
+
+describe("fixV31ThinkingPayload", () => {
+  const tools = [{ type: "function", function: { name: "get_weather" } }];
+
+  test("forces enable_thinking off for V3.1 with tools", () => {
+    const payload = {
+      model: "deepseek-ai/DeepSeek-V3.1-Terminus",
+      messages: [],
+      tools,
+      enable_thinking: true,
+      thinking_budget: 4096,
+    };
+    const fixed = fixV31ThinkingPayload(payload);
+    assert.ok(fixed, "expected a fix");
+    assert.equal(fixed!.enable_thinking, false);
+    assert.equal("thinking_budget" in fixed!, false);
+    // original untouched
+    assert.equal(payload.enable_thinking, true);
+  });
+
+  test("covers Pro/ prefix and case variations", () => {
+    const payload = {
+      model: "Pro/deepseek-ai/DeepSeek-V3.1-Terminus",
+      tools,
+      enable_thinking: true,
+      reasoning_effort: "high",
+    };
+    const fixed = fixV31ThinkingPayload(payload)!;
+    assert.equal(fixed.enable_thinking, false);
+    assert.equal("reasoning_effort" in fixed, false);
+  });
+
+  test("leaves non-V3.1, tool-less, or already-off payloads alone", () => {
+    assert.equal(
+      fixV31ThinkingPayload({ model: "deepseek-ai/DeepSeek-V3.2", tools, enable_thinking: true }),
+      undefined,
+    );
+    assert.equal(
+      fixV31ThinkingPayload({ model: "deepseek-ai/DeepSeek-V3.1-Terminus", tools: [], enable_thinking: true }),
+      undefined,
+    );
+    assert.equal(
+      fixV31ThinkingPayload({ model: "deepseek-ai/DeepSeek-V3.1-Terminus", tools, enable_thinking: false }),
+      undefined,
+    );
+    assert.equal(
+      fixV31ThinkingPayload({ model: "zai-org/GLM-5.3", tools, enable_thinking: true }),
+      undefined,
+    );
   });
 });
