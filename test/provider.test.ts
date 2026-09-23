@@ -14,6 +14,7 @@ import {
   buildSiliconFlowProvider,
   resolveBaseUrl,
   siliconFlowApiKeyAuth,
+  withOverflowRemediation,
   type SiliconFlowApis,
 } from "../provider.ts";
 
@@ -167,6 +168,93 @@ describe("api key auth", () => {
         signal: controller.signal,
       }),
     );
+  });
+});
+
+describe("withOverflowRemediation", () => {
+  const OVERFLOW_BODY =
+    '{"code":20015,"message":"number of input tokens (300030) has exceeded max_prompt_tokens (98304) limit.","data":null}';
+  const OVERFLOW_MESSAGE =
+    "number of input tokens (300030) has exceeded max_prompt_tokens (98304) limit.";
+
+  type Recorded = { model: unknown; context: unknown; options?: { fetch?: typeof fetch; apiKey?: string } };
+
+  function recordingApi(seen: Recorded[]): ProviderStreams {
+    const EMPTY = async function* () {
+      /* never yields */
+    };
+    const record =
+      (fn: string) =>
+      (model: any, context: any, options: any): any => {
+        void fn;
+        seen.push({ model, context, options });
+        return { [Symbol.asyncIterator]: EMPTY };
+      };
+    return { stream: record("stream"), streamSimple: record("streamSimple") };
+  }
+
+  test("injects a fetch into both delegation paths, model/context untouched", () => {
+    const seen: Recorded[] = [];
+    const wrapped = withOverflowRemediation(recordingApi(seen));
+    const model = { id: "x" };
+    const context = normalizeContext({ messages: [] });
+    void wrapped.stream(model as any, context);
+    void wrapped.streamSimple(model as any, context);
+    void wrapped.stream(model as any, context, { apiKey: "k" });
+    assert.equal(seen.length, 3);
+    for (const call of seen) {
+      assert.equal(typeof (call.options as any)?.fetch, "function");
+      assert.equal(call.model, model);
+      assert.equal(call.context, context);
+    }
+    assert.equal((seen[2].options as any).apiKey, "k", "existing options survive");
+  });
+
+  test("chains onto a caller-supplied fetch instead of replacing it", async () => {
+    const seen: Recorded[] = [];
+    const wrapped = withOverflowRemediation(recordingApi(seen));
+    const callerFetch: typeof fetch = async () => new Response("caller");
+    void wrapped.stream({ id: "x" } as any, normalizeContext({ messages: [] }), {
+      fetch: callerFetch,
+    } as any);
+    const injected = seen[0].options?.fetch as typeof fetch;
+    assert.notEqual(injected, callerFetch);
+    assert.equal(await (await injected("x")).text(), "caller");
+  });
+
+  test("does not double-wrap an already-wrapped fetch", () => {
+    const seen: Recorded[] = [];
+    const first = withOverflowRemediation(recordingApi(seen));
+    void first.stream({ id: "x" } as any, normalizeContext({ messages: [] }));
+    const onceWrapped = seen[0].options?.fetch;
+
+    const seen2: Recorded[] = [];
+    const second = withOverflowRemediation(recordingApi(seen2));
+    void second.stream({ id: "x" } as any, normalizeContext({ messages: [] }), {
+      fetch: onceWrapped,
+    } as any);
+    assert.equal(seen2[0].options?.fetch, onceWrapped, "the marker must short-circuit re-wrapping");
+  });
+
+  test("the injected fetch remediates overflow 400s and passes 200s through", async () => {
+    const seen: Recorded[] = [];
+    const wrapped = withOverflowRemediation(recordingApi(seen));
+    const gateway: typeof fetch = async (input: any) =>
+      input === "overflow"
+        ? new Response(OVERFLOW_BODY, { status: 400, headers: { "content-type": "application/json" } })
+        : new Response('{"id":"fine"}', { status: 200 });
+    void wrapped.stream({ id: "x" } as any, normalizeContext({ messages: [] }), {
+      fetch: gateway,
+    } as any);
+    const injected = seen[0].options?.fetch as typeof fetch;
+
+    const remediated = await injected("overflow");
+    assert.equal(remediated.status, 400);
+    assert.equal(await remediated.text(), OVERFLOW_MESSAGE);
+
+    const ok = await injected("fine");
+    assert.equal(ok.status, 200);
+    assert.equal(await ok.text(), '{"id":"fine"}');
   });
 });
 

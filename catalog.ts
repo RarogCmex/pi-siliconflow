@@ -206,8 +206,14 @@ export const CATALOG: readonly CatalogEntry[] = [
   {
     id: "zai-org/GLM-4.5-Air",
     name: "GLM 4.5 Air",
-    contextWindow: CTX_128K,
-    maxTokens: CTX_128K,
+    // Spec says 128K, but the gateway enforces max_prompt_tokens=98 304
+    // (measured live 2026-09-23: 300 030 tokens → 400 "max_prompt_tokens
+    // (98304) limit"). 131 072 − 32 768 reserve for output, so keep the
+    // invariant context ≥ maxTokens with 98 304/32 768. Overstating the
+    // window would delay pi's compaction until the prompt already exceeded
+    // the real cap — every long session would bounce off one 400 first.
+    contextWindow: 98_304,
+    maxTokens: 32_768,
     input: ["text"],
     // "hybrid reasoning model providing both thinking and non-thinking mode"
     thinking: { kind: "toggle" },

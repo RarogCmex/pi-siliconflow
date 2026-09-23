@@ -33,5 +33,5 @@
       ]
     }
   },
-  "include": ["*.ts", "test/*.ts"]
+  "include": ["*.ts", "test/*.ts", "live/*.ts"]
 }

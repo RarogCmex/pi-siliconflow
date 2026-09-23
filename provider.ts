@@ -15,6 +15,7 @@ import {
   type ProviderStreams,
 } from "@earendil-works/pi-ai";
 import { fetchSiliconFlowModels } from "./discovery.ts";
+import { remediateOverflowResponse } from "./errors.ts";
 import {
   buildModels,
   cnyPerUsd,
@@ -121,6 +122,40 @@ export function buildApiMap(
   const api: SiliconFlowApis = { "openai-completions": completions };
   if (enabled) api["openai-responses"] = responses;
   return api;
+}
+
+/** Marker so wrapped fetches are not wrapped again (double registration / idempotence). */
+const REMEDIATED = Symbol("siliconflow-overflow-remediation");
+
+/**
+ * Wrap either API surface so every request runs through `remediateOverflowResponse`.
+ *
+ * The SiliconFlow gateway reports a rejected oversize prompt as a 400 with a
+ * `{"code":20015,"message":"…"}` body (live-verified 2026-09-23). The OpenAI SDK
+ * composes its error message only from an OpenAI `error` envelope, so that body is
+ * discarded and pi sees "400 status code (no body)" — the overflow then goes
+ * unrecognized and auto-compaction never fires. The wrapper injects a fetch that
+ * re-emits such overflow responses as plain text, which the SDK forwards verbatim
+ * as `"400 <message>"`; the `message_end` rewrite then turns it into
+ * `context_length_exceeded:` (see errors.ts for the full chain and scope).
+ *
+ * Injection composes with a caller-supplied fetch (pi may pass its own proxying
+ * fetch): the wrapper chains onto it rather than replacing it. Everything but
+ * 400/413 overflow bodies passes through byte-identical.
+ */
+export function withOverflowRemediation(api: ProviderStreams): ProviderStreams {
+  const inject = (options: any): any => {
+    const inner: typeof fetch | undefined = options?.fetch;
+    if ((inner as any)?.[REMEDIATED]) return options;
+    const wrapped: typeof fetch = async (input, init) =>
+      remediateOverflowResponse(await (inner ?? fetch)(input, init));
+    (wrapped as any)[REMEDIATED] = true;
+    return { ...options, fetch: wrapped };
+  };
+  return {
+    stream: (model, context, options) => api.stream(model, context, inject(options)),
+    streamSimple: (model, context, options) => api.streamSimple(model, context, inject(options)),
+  };
 }
 
 export function buildSiliconFlowProvider(

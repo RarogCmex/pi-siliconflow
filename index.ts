@@ -35,7 +35,7 @@ import { openAICompletionsApi, openAIResponsesApi } from "@earendil-works/pi-ai"
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { clarifyErrorMessage, fixV31ThinkingPayload, normalizeOverflowError, shouldClarify } from "./errors.ts";
 import { PROVIDER_ID, RESPONSES_ENABLED } from "./models.ts";
-import { buildApiMap, buildSiliconFlowProvider } from "./provider.ts";
+import { buildApiMap, buildSiliconFlowProvider, withOverflowRemediation } from "./provider.ts";
 
 export default function (pi: ExtensionAPI) {
   // Two rewrites, both guarded to this provider and to error-stop assistants:
@@ -104,9 +104,16 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerProvider(
     buildSiliconFlowProvider(
+      // Every registered surface goes through withOverflowRemediation so the
+      // gateway's body-less "400" overflow rejections become recognizable
+      // errors (see errors.ts / provider.ts for why the body is lost otherwise).
       RESPONSES_ENABLED
-        ? buildApiMap(openAICompletionsApi(), openAIResponsesApi(), true)
-        : { "openai-completions": openAICompletionsApi() },
+        ? buildApiMap(
+            withOverflowRemediation(openAICompletionsApi()),
+            withOverflowRemediation(openAIResponsesApi()),
+            true,
+          )
+        : { "openai-completions": withOverflowRemediation(openAICompletionsApi()) },
     ),
   );
 }
