@@ -13,12 +13,36 @@ LongCat, Step, Ling, Seed) через OpenAI-совместимый эндпои
 
 Код под OpenAI Responses API **есть, но выключен** (`RESPONSES_ENABLED = false`
 в `models.ts`). Публичный шлюз SiliconFlow отвечает `404` на
-`POST /v1/responses` (проверено 2026-09-19 на `.cn` и `.com`); их же гайд по
-Codex велит мостить протоколы через CC Switch. Пока флаг выключен, живой
-провайдер регистрирует только `openai-completions` — случайный
+`POST /v1/responses` (проверено 2026-09-19 и повторно живым запросом 2026-09-23
+на `.cn`); их же гайд по Codex велит мостить протоколы через CC Switch. Пока
+флаг выключен, живой провайдер регистрирует только `openai-completions` — случайный
 `api: "openai-responses"` падает закрыто, а не уходит в SDK на 404. Конверсия,
 compat, семейный роутинг и тесты остаются в дереве: когда они запилят роут,
 достаточно переключить константу.
+
+### Anthropic Messages (`/v1/messages`): известная альтернатива, не переключаемся
+
+Помимо Chat Completions, шлюз официально принимает Anthropic-протокол
+`POST /v1/messages` (`x-api-key` + `anthropic-version`, официальная спека в
+api-docs.siliconflow.cn). Все живые пробы 2026-09-23 прошли: system-параметр,
+`thinking: {type: disabled|enabled, budget_tokens}` — Anthropic-нативно и
+без ограничений V3.1 (thinking вместе с `tool_use` в одном ответе), streaming с
+`message_start`/`content_block_delta`/`message_delta`, разговоры длиннее 10
+сообщений (maxItems: 10 в их OpenAPI-схеме — врёт).
+
+Расширение остаётся на completions, потому что Messages даёт **паритет, а не
+выигрыш**, с одной реальной регрессией:
+
+- **Нет селектора усилия.** У DeepSeek-V4 / GLM-5.x рассуждения управляются
+  уровнями (low/high/max → `reasoning_effort`), а в Anthropic-протоколе есть
+  только `budget_tokens` — флагманские модели теряют наши `thinkingLevelMap`.
+- Overflow-ошибка приходит тем же не-OpenAI конвертом `{"code":20015,...}`
+  (проверено) — ремедиацию пришлось бы перепроверять под anthropic-адаптер pi.
+- pi уже полностью раскладывает `reasoning_content` completions в
+  ThinkingContent, так что отображение рассуждений совпадает.
+
+Если completions начнёт деградировать — Messages готовый запасной маршрут с
+зафиксированными выше ограничениями.
 
 ## Установка
 
@@ -231,6 +255,14 @@ export SILICONFLOW_CNY_PER_USD=7.1
 Эндпоинт `api.siliconflow.com` (международный) имеет собственный прайс-лист в USD,
 который не совпадает с `.cn` даже после конвертации. Цены в этом каталоге описывают
 только `.cn`.
+
+Вдобавок `.com` официально сворачивается: по release notes SiliconFlow
+«api.siliconflow.com will be phased out… switch to api.siliconflow.cn as soon as
+possible» — на `.cn` поднят Global Traffic Manager с тем же глобальным доступом.
+Расширение с самого начала целиком нацелено на `.cn` (дефолтный baseUrl, CNY-цены,
+все живые проверки — только `.cn`) и не поддерживает `.com`: если вы всё же
+укажете его через `SILICONFLOW_BASE_URL`, цены каталога будут неточны, а
+платформа рекомендует мигрировать в любом случае.
 
 ## Переменные окружения
 
