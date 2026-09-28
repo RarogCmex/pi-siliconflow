@@ -47,7 +47,9 @@ api-docs.siliconflow.cn). Все живые пробы 2026-09-23 прошли: 
 ## Установка
 
 ```bash
-pi install ~/pi-plugins/pi-siliconflow
+pi install git:github.com/RarogCmex/pi-siliconflow@main
+# или локально
+pi install /path/to/pi-siliconflow
 ```
 
 ## Авторизация
@@ -333,7 +335,7 @@ ln -sfn ~/.local/lib/node_modules/@earendil-works/pi-coding-agent \
   node_modules/@earendil-works/pi-coding-agent
 ln -sfn ~/.local/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai \
   node_modules/@earendil-works/pi-ai
-ln -sfn ~/pi-plugins/pi-alibaba-models/node_modules/@types/node \
+ln -sfn ~/.local/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@types/node \
   node_modules/@types/node
 ```
 
