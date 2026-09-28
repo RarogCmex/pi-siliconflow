@@ -1,9 +1,17 @@
 {
-  "name": "pi-siliconflow",
-  "private": true,
+  "name": "@rarogcmex/pi-siliconflow",
   "version": "0.4.0",
   "description": "SiliconFlow provider for pi — curated CNY catalog, family-guessed live overlay, /login support. openai-responses code is present but gated off until the gateway ships it.",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RarogCmex/pi-siliconflow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RarogCmex/pi-siliconflow/issues"
+  },
+  "homepage": "https://github.com/RarogCmex/pi-siliconflow#readme",
   "keywords": [
     "pi-package",
     "pi",
@@ -15,6 +23,11 @@
     "qwen",
     "longcat"
   ],
+  "scripts": {
+    "test": "node --test",
+    "typecheck": "tsc -p tsconfig.json",
+    "check": "npm run typecheck && npm test"
+  },
   "pi": {
     "extensions": [
       "./index.ts"
@@ -28,8 +41,7 @@
       "optional": true
     }
   },
-  "scripts": {
-    "test": "node --test",
-    "typecheck": "tsc -p tsconfig.json"
+  "publishConfig": {
+    "access": "public"
   }
 }
