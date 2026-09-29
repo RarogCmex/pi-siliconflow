@@ -45,6 +45,16 @@ export const PROVIDER_ID = "siliconflow";
 export const DEFAULT_BASE_URL = "https://api.siliconflow.cn/v1";
 
 /**
+ * Where a key is created and the balance is visible. One constant on purpose:
+ * the same URL is printed by the login prompt, by the transient error rewrite and
+ * by the persistent TUI note, and three copies of it drift (they already had —
+ * one was Russian-only). Lives here because `errors.ts`, `provider.ts` and
+ * `index.ts` all import this module and none of them may import each other's
+ * constants without risking a cycle.
+ */
+export const API_KEYS_URL = "https://cloud.siliconflow.cn/account/ak";
+
+/**
  * Flip when SiliconFlow ships `POST /v1/responses` (they told Codex users to
  * use CC Switch as a converter, so this is currently off). While false:
  *   - the live provider does not register `openAIResponsesApi()` — a stray

@@ -34,7 +34,7 @@
 import { openAICompletionsApi, openAIResponsesApi } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { clarifyErrorMessage, fixV31ThinkingPayload, normalizeOverflowError, shouldClarify } from "./errors.ts";
-import { PROVIDER_ID, RESPONSES_ENABLED } from "./models.ts";
+import { API_KEYS_URL, PROVIDER_ID, RESPONSES_ENABLED } from "./models.ts";
 import { buildApiMap, buildSiliconFlowProvider, withOverflowRemediation } from "./provider.ts";
 
 export default function (pi: ExtensionAPI) {
@@ -81,10 +81,15 @@ export default function (pi: ExtensionAPI) {
         {
           type: "custom_message",
           customType: "siliconflow-auth-help",
+          // English, matching `clarifyErrorMessage` (the transient rewrite of the
+          // same failure) and the login prompt. Every other user-facing string in
+          // this plugin is English; this one used to be the exception, so a
+          // non-Russian user got a mid-session message they could not read while
+          // the bubble above it was readable.
           content:
-            "SiliconFlow: ключ недействителен, отозван, истёк — либо на балансе нет средств " +
-            "(шлюз отвечает одинаково). Проверьте ключ и баланс: https://cloud.siliconflow.cn/account/ak — " +
-            "затем выполните `/login siliconflow` или обновите `SILICONFLOW_API_KEY`.",
+            "SiliconFlow: the API key is invalid, revoked or expired — or the account " +
+            `has no remaining balance (the gateway answers both identically). Check the key and the balance at ${API_KEYS_URL}, ` +
+            `then run \`/login ${PROVIDER_ID}\` or update \`SILICONFLOW_API_KEY\`.`, 
           display: true,
         },
       ],

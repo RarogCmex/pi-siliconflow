@@ -17,6 +17,7 @@ import {
 import { fetchSiliconFlowModels } from "./discovery.ts";
 import { remediateOverflowResponse } from "./errors.ts";
 import {
+  API_KEYS_URL,
   buildModels,
   cnyPerUsd,
   DEFAULT_BASE_URL,
@@ -33,7 +34,10 @@ export type SiliconFlowApis = {
   "openai-responses"?: ProviderStreams;
 };
 
-export const API_KEYS_URL = "https://cloud.siliconflow.cn/account/ak";
+// Imported for use below and re-exported so existing importers of this module
+// (`index.ts`, `test/provider.test.ts`) keep resolving it from here. The single
+// definition lives in `models.ts`.
+export { API_KEYS_URL };
 export const API_KEY_AUTH_NAME = "SiliconFlow API key";
 export const API_KEY_ENV_VAR = "SILICONFLOW_API_KEY";
 export const BASE_URL_ENV_VAR = "SILICONFLOW_BASE_URL";

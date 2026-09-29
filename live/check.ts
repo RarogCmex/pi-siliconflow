@@ -184,7 +184,14 @@ async function checkListing(): Promise<void> {
     `gateway ids not in catalog (overlay candidates): ${unknown.join(", ") || "none"}`,
     `catalog ids not served by gateway (stale): ${stale.join(", ") || "none"}`,
   ];
-  report("A: GET /v1/models", unknown.length === 0 || true, lines.join("\n"));
+  // PASS condition is `stale.length === 0`, deliberately not `unknown.length === 0`:
+  // ids the gateway serves but the catalog does not are *overlay candidates*, which
+  // is the normal state (the listing grows), and failing on them would make this
+  // check red whenever the vendor adds a model. Catalog ids the gateway no longer
+  // serves are the real defect — the frozen table has drifted and pi would offer a
+  // dead model. `res.status === 200` is already guaranteed by the early return
+  // above.
+  report("A: GET /v1/models", stale.length === 0, lines.join("\n"));
 }
 
 // --- main -----------------------------------------------------------------------

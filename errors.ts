@@ -18,12 +18,13 @@
  * compaction.
  */
 
-import { PROVIDER_ID } from "./models.ts";
+import { API_KEYS_URL, PROVIDER_ID } from "./models.ts";
 
 /** `<status> status code (no body)` — the adapter's fallback when it found no usable body. */
 const OPAQUE_AUTH_FAILURE = /^(40[123]) status code \(no body\)$/;
 
-const KEY_PAGE_URL = "https://cloud.siliconflow.cn/account/ak";
+/** Kept as a local alias so the wording below stays readable. */
+const KEY_PAGE_URL = API_KEYS_URL;
 
 /**
  * Return a clearer message for an opaque SiliconFlow auth/billing failure, or

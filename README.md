@@ -96,7 +96,9 @@ SiliconFlow возвращает ошибки не в OpenAI-конверте (`
 
 Дополнительно (pi 0.87+): `turn_end` как actionable boundary добавляет persistent
 `custom_message` (`siliconflow-auth-help`, `display: true`) со ссылкой на
-https://cloud.siliconflow.cn/account/ak и подсказкой `/login siliconflow`.
+https://cloud.siliconflow.cn/account/ak и подсказкой `/login siliconflow`. Текст —
+на английском, как и транзиентное переписывание той же ошибки в `errors.ts` и
+промпт `/login`: все пользовательские строки плагина на одном языке.
 Переписывание в `message_end` — транзиентное (только в бабле ошибки), а entry
 в `turn_end` остаётся в истории и не теряется при скролле. На error-исходах
 `continue` сознательно не выставляется — это hard exit.
