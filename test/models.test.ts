@@ -249,7 +249,7 @@ describe("family guessing for the semi-dynamic overlay", () => {
     }
   });
 
-  test("guessResponsesFamily keeps the paratera-style routing table dormant", () => {
+  test("guessResponsesFamily keeps the mixed-API routing table dormant", () => {
     assert.equal(guessResponsesFamily("deepseek-ai/DeepSeek-V4-Flash"), true);
     assert.equal(guessResponsesFamily("zai-org/GLM-5.4"), true);
     assert.equal(guessResponsesFamily("Qwen/Qwen3.8-27B"), true);

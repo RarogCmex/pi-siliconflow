@@ -1,20 +1,32 @@
 # pi-siliconflow
 
-Провайдер [SiliconFlow](https://siliconflow.cn) для pi coding agent.
+Провайдер [SiliconFlow](https://siliconflow.cn) для [pi](https://github.com/earendil-works/pi)
+coding agent. npm-имя пакета — `@rarogcmex/pi-siliconflow`.
 
-Один API-ключ даёт доступ к каталогу открытых моделей (DeepSeek, GLM, Kimi, Qwen,
-LongCat, Step, Ling, Seed) через OpenAI-совместимый эндпоинт
-`https://api.siliconflow.cn/v1`.
+SiliconFlow — китайский хостинг открытых моделей (DeepSeek, GLM, Kimi, Qwen,
+LongCat, Step, Ling, Seed) с OpenAI-совместимым эндпоинтом
+`https://api.siliconflow.cn/v1`. **Нужен платный аккаунт на `.cn` с балансом в
+CNY**: один API-ключ даёт доступ к каталогу, а списание идёт с юанёвого баланса.
+Бесплатного уровня у этих моделей нет; цены в таблицах ниже — реальные, из
+листинга шлюза.
+
+> Этот README — на русском; комментарии в коде и пользовательские строки
+> рантайма — на английском (за исключением одного персистентного сообщения об
+> ошибке авторизации, см. «Обработка ошибок»).
 
 Расширение регистрирует `siliconflow` как полноценный нативный провайдер pi-ai
 (`createProvider`), а не как legacy-конфиг: поддерживаются `/login`, полудинамический
 каталог (кураторская таблица + семейные эвристики для новых id) и настоящие
-параметры рассуждений SiliconFlow.
+параметры рассуждений SiliconFlow. Требуется pi **0.86+** для per-model
+оверрайдов компакшена и **0.87+** для границы `turn_end`, на которой extension
+ставит персистентную подсказку; на более старом pi расширение загрузится, но эти
+две возможности молча не сработают.
 
 Код под OpenAI Responses API **есть, но выключен** (`RESPONSES_ENABLED = false`
 в `models.ts`). Публичный шлюз SiliconFlow отвечает `404` на
 `POST /v1/responses` (проверено 2026-09-19 и повторно живым запросом 2026-09-23
-на `.cn`); их же гайд по Codex велит мостить протоколы через CC Switch. Пока
+на `.cn`); их же гайд по Codex велит мостить протоколы через
+[CC Switch](https://github.com/farion1231/cc-switch). Пока
 флаг выключен, живой провайдер регистрирует только `openai-completions` — случайный
 `api: "openai-responses"` падает закрыто, а не уходит в SDK на 404. Конверсия,
 compat, семейный роутинг и тесты остаются в дереве: когда они запилят роут,
@@ -22,24 +34,20 @@ compat, семейный роутинг и тесты остаются в дер
 
 ### Anthropic Messages (`/v1/messages`): известная альтернатива, не переключаемся
 
-Помимо Chat Completions, шлюз официально принимает Anthropic-протокол
-`POST /v1/messages` (`x-api-key` + `anthropic-version`, официальная спека в
-api-docs.siliconflow.cn). Все живые пробы 2026-09-23 прошли: system-параметр,
-`thinking: {type: disabled|enabled, budget_tokens}` — Anthropic-нативно и
-без ограничений V3.1 (thinking вместе с `tool_use` в одном ответе), streaming с
-`message_start`/`content_block_delta`/`message_delta`, разговоры длиннее 10
-сообщений (maxItems: 10 в их OpenAPI-схеме — врёт).
+Шлюз официально принимает и Anthropic-протокол `POST /v1/messages`
+(`x-api-key` + `anthropic-version`, спека —
+<https://api-docs.siliconflow.cn>). Пробы 2026-09-23 подтвердили system,
+`thinking: {type: disabled|enabled, budget_tokens}`, streaming и длинные диалоги
+(заявленное в их OpenAPI-схеме `maxItems: 10` фактически не ограничивает длину).
 
 Расширение остаётся на completions, потому что Messages даёт **паритет, а не
-выигрыш**, с одной реальной регрессией:
-
-- **Нет селектора усилия.** У DeepSeek-V4 / GLM-5.x рассуждения управляются
-  уровнями (low/high/max → `reasoning_effort`), а в Anthropic-протоколе есть
-  только `budget_tokens` — флагманские модели теряют наши `thinkingLevelMap`.
-- Overflow-ошибка приходит тем же не-OpenAI конвертом `{"code":20015,...}`
-  (проверено) — ремедиацию пришлось бы перепроверять под anthropic-адаптер pi.
-- pi уже полностью раскладывает `reasoning_content` completions в
-  ThinkingContent, так что отображение рассуждений совпадает.
+выигрыш**, с одной реальной регрессией: в Anthropic-протоколе рассуждения
+управляются только `budget_tokens`, поэтому флагманские DeepSeek-V4 / GLM-5.x
+потеряли бы селектор усилия (`reasoning_effort` low/high/max), который даёт
+`thinkingLevelMap`. pi и так полностью раскладывает `reasoning_content` из
+completions в ThinkingContent, так что отображение рассуждений совпадает.
+Overflow-ошибка приходит тем же не-OpenAI конвертом `{"code":20015,…}` —
+ремедиацию пришлось бы перепроверять под anthropic-адаптер pi.
 
 Если completions начнёт деградировать — Messages готовый запасной маршрут с
 зафиксированными выше ограничениями.
@@ -110,7 +118,7 @@ plain text — тогда SDK просто вставляет текст в со
 `400 <message>`, `message_end` переписывает его в `context_length_exceeded:`
 и pi запускает авто-компакшен. Всё остальное (включая 401 «Api key is invalid»)
 проходит без изменений: их путь непрозрачных ошибок уже описан и протестирован
-разделом выше. Оба наблюдаемых формулировок шлюза покрыты: `max_prompt_tokens`
+разделом выше. Обе наблюдаемые формулировки шлюза покрыты: `max_prompt_tokens`
 (GLM-4.5-Air) и `max_seq_len` (Ling-flash-2.0, общее окно промпт+вывод = 131072).
 
 Полный прогон можно повторить: `node live/check.ts` (запрашивает живой ключ из
@@ -130,7 +138,7 @@ of input tokens (129470) has exceeded max_prompt_tokens (98304) limit.` и
 ## Модели
 
 Каталог — 21 модель, проверенная по публичным страницам SiliconFlow. Это
-**полудинамический** каталог в том же смысле, что у paratera: кураторская таблица
+**полудинамический** каталог: кураторская таблица
 держит измеренные окна, цены и параметры рассуждений, а живое обнаружение
 (`GET /v1/models?sub_type=chat`) добавляет id, которых в таблице ещё нет.
 
@@ -149,12 +157,12 @@ of input tokens (129470) has exceeded max_prompt_tokens (98304) limit.` и
 | `deepseek-ai/DeepSeek-V4-Pro` | 1M | 384K | | `reasoning_effort` high/max | ¥12/¥24/¥1 |
 | `deepseek-ai/DeepSeek-V3.2` | 160K | 160K | | `enable_thinking` + `thinking_budget` | ¥4/¥6/¥0.4 |
 | `Pro/deepseek-ai/DeepSeek-V3.2` | 160K | 160K | | `enable_thinking` + `thinking_budget` | ¥4/¥6/¥0.4 |
-| `deepseek-ai/DeepSeek-V3.1-Terminus` | 160K | 160K | | `enable_thinking` + `thinking_budget` ‡ | ¥4/¥12/¥0.4 |
-| `Pro/deepseek-ai/DeepSeek-V3.1-Terminus` | 160K | 160K | | `enable_thinking` + `thinking_budget` ‡ | ¥4/¥12/¥0.4 |
+| `deepseek-ai/DeepSeek-V3.1-Terminus` | 160K | 160K | | `enable_thinking` + `thinking_budget` § | ¥4/¥12/¥0.4 |
+| `Pro/deepseek-ai/DeepSeek-V3.1-Terminus` | 160K | 160K | | `enable_thinking` + `thinking_budget` § | ¥4/¥12/¥0.4 |
 | `zai-org/GLM-5.3` | 1M | 128K | | `reasoning_effort` low/high/max | ¥8/¥28/¥2 |
 | `zai-org/GLM-5.2` | 1M | 128K | | `reasoning_effort` low/high/max | ¥8/¥28/¥2 |
 | `Pro/zai-org/GLM-5.1` | 200K | 128K | | `reasoning_effort` low/high/max | ¥6/¥24/¥1.3 † |
-| `zai-org/GLM-4.5-Air` | 98K ‡ | 32K ‡ | | `enable_thinking` | ¥1/¥6/¥0 |
+| `zai-org/GLM-4.5-Air` | 96K ‡ | 32K ‡ | | `enable_thinking` | ¥1/¥6/¥0 |
 | `moonshotai/Kimi-K2.7-Code` | 256K | 256K | ✓ | всегда включены | ¥6.5/¥27/¥1.3 |
 | `Pro/moonshotai/Kimi-K2.6` | 256K | 256K | ✓ | всегда включены | ¥6.5/¥27/¥1.1 |
 | `Qwen/Qwen3.6-27B` | 256K | 256K | ✓ | `enable_thinking` + `thinking_budget` | ¥3/¥18/¥0 |
@@ -174,12 +182,14 @@ of input tokens (129470) has exceeded max_prompt_tokens (98304) limit.` и
 
 ‡ Спека модели обещает 128K, но шлюз держит `max_prompt_tokens = 98 304`
 (измерено живым запросом 2026-09-23: 300 030 токенов → 400 «max_prompt_tokens
-(98304) limit»), разделив окно как 96K промпта + 32K вывода. В каталоге стоят
-измеренные 98 304/32 768: завышение окна лишь откладывало бы компакшен до уже
+(98304) limit»). 98 304 токена — это 96K в тех же двоичных единицах, в которых
+считаны остальные ячейки таблицы (160K = 163 840, 128K = 131 072, 1M =
+1 048 576). В каталоге стоят измеренные `contextWindow: 98 304` и
+`maxTokens: 32 768`: завышение окна лишь откладывало бы компакшен до уже
 невозможного запроса, и каждая длинная сессия спотыкалась бы об один и тот же
 400.
 
-‡ По докам SiliconFlow `DeepSeek-V3.1` с function calling требует
+§ По докам SiliconFlow `DeepSeek-V3.1` с function calling требует
 `enable_thinking: false`. pi как агент всегда шлёт `tools`, поэтому расширение
 через `before_provider_request` форсит `enable_thinking: false` (и убирает
 `thinking_budget`/`reasoning_effort`) именно когда в запросе есть tools.
@@ -198,7 +208,7 @@ of input tokens (129470) has exceeded max_prompt_tokens (98304) limit.` и
 - **Не чат**: эмбеддинги, реранкеры, изображение, аудио, видео, OCR.
 - **Продаётся на .cn, но без публичной страницы спецификаций**:
   `Qwen/Qwen3.8-27B`, `tencent/Hy4-preview`, `XingChenAGI/Xing4.0-29B`. Живое
-  обнаружение их покажет: Qwen 3.8 унаследует sibling-эвристику (256K,
+  обнаружение их покажет: Qwen 3.8 унаследует семейную эвристику (256K,
   `enable_thinking` + `thinking_budget`, зрение, цена 0); Hy4-preview и Xing4.0
   останутся консервативными 32K/4K без рассуждений.
 
@@ -227,7 +237,8 @@ of input tokens (129470) has exceeded max_prompt_tokens (98304) limit.` и
 }
 ```
 
-Это раньше запускает компакшен (при ~936K вместо ~983K) и оставляет больше
+Это раньше запускает компакшен (при ~985K вместо ~1032K: окно 1M-моделей —
+`1 048 576`, порог — `contextWindow − reserveTokens`) и оставляет больше
 свежего контекста для кодинга. Для 128–256K моделей дефолтов достаточно.
 
 ## Цены и валюта
@@ -288,6 +299,7 @@ pi определяет OpenAI-совместимость по URL провай�
 | `supportsDeveloperRole` | `false` | документированы только `system`/`user`/`assistant`/`tool` |
 | `supportsStrictMode` | `false` | на всех страницах моделей «Structured Outputs: Not supported» |
 | `supportsStore`, `supportsLongCacheRetention`, `supportsOpenAIGrammarTools` | `false` | этих полей нет в справочнике — не отправляем |
+| `requiresToolResultName`, `requiresAssistantAfterToolResult`, `requiresThinkingAsText` | `false` | шлюз принимает стандартную OpenAI-форму: `name` в tool-результате не требуется, assistant-сообщение между tool-вызовом и результатом не нужно, рассуждения приходят отдельным `reasoning_content`, а не текстом |
 | `supportsReasoningEffort` | по модели | автодетект дал бы `true` всем, и Qwen-моделям улетело бы `reasoning_effort: "medium"` |
 | `thinkingTokenBudgetField` | `thinking_budget` (только Qwen/DeepSeek V3.x) | задокументирован; никогда не совмещается с `reasoning_effort` |
 
@@ -327,17 +339,18 @@ compat-точку входа (строгое надмножество основ
 `tsconfig.json` повторяет этот alias через `paths`, чтобы тайпчек видел то же,
 что видит pi.
 
-Для тайпчека нужны симлинки (вне гита):
+Для тайпчека нужны пакеты самого pi — они не объявлены зависимостями (в рантайме
+их подменяет загрузчик расширений pi), поэтому их линкует отдельный скрипт:
 
 ```bash
-mkdir -p node_modules/@earendil-works node_modules/@types
-ln -sfn ~/.local/lib/node_modules/@earendil-works/pi-coding-agent \
-  node_modules/@earendil-works/pi-coding-agent
-ln -sfn ~/.local/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai \
-  node_modules/@earendil-works/pi-ai
-ln -sfn ~/.local/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@types/node \
-  node_modules/@types/node
+node scripts/link-pi.mjs
 ```
+
+Он сам находит глобальную установку pi — префикс npm, nvm, pnpm, `~/.local`,
+`/usr/local` или каталог, куда резолвится исполняемый `pi`, — и создаёт симлинки
+(на Windows — junctions). Для конкретной установки:
+`PI_ROOT=/path/to/node_modules node scripts/link-pi.mjs`. Проверено на
+pi 0.87.1 / pi-ai 0.87.1 / `@types/node` 22.19.19.
 
 ### Что покрыто тестами
 
@@ -347,7 +360,7 @@ ln -sfn ~/.local/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@
   `thinking_budget`, `max_tokens`, роль `system`, отсутствие `strict` / `store` /
   `prompt_cache_retention`, и что внутренние имена уровней pi (`medium`, `xhigh`)
   никогда не утекают в шлюз — по всем 21 модели и всем 6 уровням.
-- **Инваранты каталога** — уникальность id, не-нулевые цены, ступени дороже базы,
+- **Инварианты каталога** — уникальность id, не-нулевые цены, ступени дороже базы,
   контекст ≥ вывода, точечная сверка спецификаций флагманов.
 - **Конвертация валют** — точность, округление, переопределение курса, откат на
   значение по умолчанию при мусоре.
@@ -370,31 +383,32 @@ ln -sfn ~/.local/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@
 
 ### Проверено с живым ключом (2026-09-23)
 
-Ключ из первой сессии был исчерпан; с новым ключом всё ниже проверено живыми
-запросами (скрипт `live/check.ts`, шесть проверок, все PASS):
+Что шлюз действительно принимает — по шести проверкам `live/check.ts`, все PASS.
+Перечислены только устойчивые следствия для пользователя; журнал сессии, счётчики
+токенов и ход отладки здесь намеренно не приводятся.
 
-1. **`stream_options: { include_usage: true }` принимается.** Usage приходит:
-   вход/выход/`reasoning_tokens` (через `completion_tokens_details.reasoning_tokens`)
-   учитываются, стоимость считается по ценам каталога — сверено вручную на
-   нескольких моделях.
-2. **Сообщение о переполнении контекста распознаётся pi.** Здесь вскрылась
-   реальная дыра: шлюз отвечает осмысленным телом, но OpenAI SDK его выбрасывает
-   (нет конверта `error.message`), и pi видел `400 (no body)`. См. раздел выше —
-   починено переупаковкой ответа в `fetch`-обёртке. Обе формулировки
-   (`max_prompt_tokens` и `max_seq_len`) живо воспроизведены и покрыты тестами.
-3. **Цены.** Шлюз цен в ответе не возвращает; стоимость считает pi по каталогу,
-   токены в usage совпали с ожидаемыми. Промпт-кэш на `Qwen3.5-27B` не
-   наблюдался (три идентичных запроса по 1,5K токенов — `cacheRead=0`), но
-   адаптер pi корректно читает `prompt_tokens_details.cached_tokens` и
-   `prompt_cache_hit_tokens`, так что учёт включится, когда кэш сработает.
+- **`stream_options: { include_usage: true }` принимается.** Usage приходит в
+  стриме: вход, выход и `reasoning_tokens` (через
+  `completion_tokens_details.reasoning_tokens`) учитываются, стоимость pi считает
+  по ценам каталога.
+- **Переполнение контекста распознаётся pi.** Шлюз отвечает осмысленным телом,
+  но OpenAI SDK его выбрасывает (нет конверта `error.message`), поэтому без
+  вмешательства pi видит `400 (no body)`. Расширение переупаковывает ответ в
+  `fetch`-обёртке; обе формулировки шлюза (`max_prompt_tokens` и `max_seq_len`)
+  воспроизведены живьём и покрыты тестами. См. «Переполнение контекста» выше.
+- **`fixV31ThinkingPayload` работает.** DeepSeek-V3.1 + tools с принудительным
+  `enable_thinking: false` — живой tool-call раунд-трип проходит,
+  `stopReason: toolUse`.
+- **`reasoning_effort` и `thinking_budget` принимаются** (проверено на
+  DeepSeek-V4-Flash и Qwen3.5-27B).
+- **Каталог не устарел:** все 21 id из таблицы на шлюзе присутствуют.
+  Кандидаты оверлея — в основном старые Qwen2.5/3 и LoRA-варианты плюс модели без
+  публичных спецификаций; классификация семей обрабатывает их как описано.
+- **Цены в ответе шлюза отсутствуют** — стоимость считает pi по каталогу, токены
+  в usage совпадают с ожидаемыми.
 
-Кроме того, живым запросом подтверждёно:
-
-- каталог живого обнаружения: все 21 id из каталога на шлюзе есть (устаревших нет);
-  оверлей-кандидаты — в основном старые Qwen2.5/3 и LoRA-модели плюс три модели
-  без публичных спеков; фильтр их по классификации семей обрабатывает как
-  документировано;
-- фикс `fixV31ThinkingPayload` (DeepSeek-V3.1 + tools → `enable_thinking:false`):
-  живой tool-call раунд-трип прошёл, `stopReason: toolUse`;
-- `reasoning_effort` и `thinking_budget` принимаются шлюзом (DeepSeek-V4-Flash и
-  Qwen3.5-27B).
+**Известные ограничения.** Промпт-кэш на `Qwen3.5-27B` не сработал (три
+идентичных запроса по ~1,5K токенов дали `cacheRead = 0`), поэтому `cacheRead`
+для Qwen-семейства в каталоге нулевой. Адаптер pi при этом корректно читает
+`prompt_tokens_details.cached_tokens` и `prompt_cache_hit_tokens`, так что учёт
+включится сам, если кэш на стороне шлюза заработает.

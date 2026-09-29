@@ -17,7 +17,8 @@
  *   - `Tools: Not supported` (tencent/Hunyuan-A13B-Instruct) — unusable for an agent
  *   - non-chat modalities (embeddings, rerankers, image, audio, video, OCR)
  *   - listed for sale on .cn but with no public spec page (Qwen/Qwen3.8-27B,
- *     tencent/Hy4-preview). Live discovery still surfaces them with safe defaults.
+ *     tencent/Hy4-preview, XingChenAGI/Xing4.0-29B). Live discovery still
+ *     surfaces all three with safe defaults.
  *
  * Prices are kept in CNY because that is what the .cn endpoint bills in; `models.ts`
  * converts to the USD-per-million that pi's `ModelCost` expects.
@@ -25,10 +26,11 @@
 
 import type { ThinkingLevelMap } from "@earendil-works/pi-ai";
 
-/** SiliconFlow speaks chat completions natively. `openai-responses` is prepared
- *  (paratera-style mixed-API) but gated behind `RESPONSES_ENABLED` — the public
- *  .cn/.com gateways 404 on `POST /v1/responses` (probed 2026-09-19; SiliconFlow
- *  Codex guide: bridge via CC Switch). */
+/** SiliconFlow speaks chat completions natively. A mixed
+ *  `openai-completions` / `openai-responses` API map is prepared but gated
+ *  behind `RESPONSES_ENABLED` — the public .cn/.com gateways 404 on
+ *  `POST /v1/responses` (probed 2026-09-19; SiliconFlow's own Codex guide tells
+ *  users to bridge the protocol externally via CC Switch). */
 export type GatewayApi = "openai-responses" | "openai-completions";
 
 /** CNY per 1M tokens. `cacheRead` is SiliconFlow's 缓存价格 column; 0 when "-" (no cache tier). */

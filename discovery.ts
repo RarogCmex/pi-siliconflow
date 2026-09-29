@@ -14,15 +14,15 @@
  * provider with no models, which is worse than showing one the key cannot use.
  *
  * Unknown ids are not mute 32K stubs: `unknownModelToModel` family-guesses
- * thinking, vision and window from the model name, the same way paratera
- * guesses a route. Unrecognised families stay conservative.
+ * thinking, vision and window from the model name, by the same family
+ * heuristics that guess a route. Unrecognised families stay conservative.
  */
 
 import type { RefreshModelsContext } from "@earendil-works/pi-ai";
 import { CATALOG_BY_ID } from "./catalog.ts";
 import { unknownModelToModel, type SiliconFlowModel } from "./models.ts";
 
-/** Payload of `GET /v1/models` (see api-docs.siliconflow.cn/docs/api/models-get). */
+/** Payload of `GET /v1/models` (https://api-docs.siliconflow.cn/docs/api/models-get). */
 interface ModelsResponse {
   object?: string;
   data?: { id?: unknown }[];

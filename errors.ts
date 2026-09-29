@@ -151,7 +151,8 @@ export async function remediateOverflowResponse(response: Response): Promise<Res
 
 /**
  * SiliconFlow constraint: `DeepSeek-V3.1` with function calling must use
- * `enable_thinking: false` (docs: api-docs.siliconflow.cn reasoning guide).
+ * `enable_thinking: false` (docs: the reasoning guide at
+ * https://api-docs.siliconflow.cn).
  * pi as an agent always sends `tools`, so a V3.1 model with thinking enabled
  * would break tool calls.
  *

@@ -4,6 +4,9 @@
   "description": "SiliconFlow provider for pi — curated CNY catalog, family-guessed live overlay, /login support. openai-responses code is present but gated off until the gateway ships it.",
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RarogCmex/pi-siliconflow.git"

@@ -12,8 +12,8 @@
  *     rules, so the auto-detected defaults would be wrong in four places that
  *     break or silently degrade requests. Every flag below is set deliberately.
  *
- * Mixed API is prepared (paratera-style `openai-responses` +
- * `openai-completions`) but the Responses adapter is **not** registered in the
+ * A mixed `openai-responses` + `openai-completions` API map is prepared, but
+ * the Responses adapter is **not** registered in the
  * live provider until `RESPONSES_ENABLED` is flipped. The public SiliconFlow
  * gateway 404s on `POST /v1/responses` (probed 2026-09-19; SiliconFlow's own
  * Codex guide says to bridge via CC Switch). Catalog/overlay stay on
@@ -268,7 +268,7 @@ export function modelName(id: string): string {
   return slash >= 0 ? bare.slice(slash + 1) : bare;
 }
 
-/** Families that speak `/responses` on other gateways (paratera). Kept so
+/** Families that speak `/responses` on gateways that offer it. Kept so
  *  `guessApi` can route them the day `RESPONSES_ENABLED` flips; unused in the
  *  live catalog while the public SiliconFlow endpoint 404s. */
 export function guessResponsesFamily(id: string): boolean {

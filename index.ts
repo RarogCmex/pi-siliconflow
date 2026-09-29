@@ -8,7 +8,7 @@
  * guessed thinking/vision/windows), and a readable message for the gateway's
  * opaque auth failures.
  *
- * Mixed API is prepared (paratera-style) but dormant: SiliconFlow 404s on
+ * A mixed completions/responses API map is prepared but dormant: SiliconFlow 404s on
  * `POST /v1/responses` (probed 2026-09-19; their Codex guide tells users to
  * bridge via CC Switch). `RESPONSES_ENABLED` gates both the adapter
  * registration and `guessApi`. Conversion / compat / family routing stay in

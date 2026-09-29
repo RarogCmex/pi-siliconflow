@@ -1,6 +1,6 @@
 /**
  * Live checks against the real SiliconFlow gateway — the items the offline
- * suite cannot cover (README § "Что проверить с живым ключом"). Not picked up
+ * suite cannot cover (README § "Проверено с живым ключом"). Not picked up
  * by `npm test`: run explicitly with `node live/check.ts`.
  *
  *  A. Key/список моделей: GET /v1/models?sub_type=chat, diff against catalog.
