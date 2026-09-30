@@ -352,7 +352,8 @@ node scripts/link-pi.mjs
 `/usr/local` или каталог, куда резолвится исполняемый `pi`, — и создаёт симлинки
 (на Windows — junctions). Для конкретной установки:
 `PI_ROOT=/path/to/node_modules node scripts/link-pi.mjs`. Проверено на
-pi 0.87.1 / pi-ai 0.87.1 / `@types/node` 22.19.19.
+pi 0.87.1 / pi-ai 0.87.1 / `@types/node` 22.19.19; тот же setup и `npm run check`
+повторены на pi 0.99.1 / pi-ai 0.99.1 (2026-09-30) — 129/129 зелёные.
 
 ### Что покрыто тестами
 
