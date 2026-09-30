@@ -356,6 +356,12 @@ node scripts/link-pi.mjs
 pi 0.87.1 / pi-ai 0.87.1 / `@types/node` 22.19.19; тот же setup и `npm run check`
 повторены на pi 0.99.1 / pi-ai 0.99.1 (2026-09-30) — 129/129 зелёные.
 
+`npm run typecheck` зовёт голый `tsc`, а `devDependencies` здесь намеренно пусты
+(`scripts/link-pi.mjs` линкует только пакеты пи), поэтому TypeScript нужен в
+`PATH`: `npm i -g typescript@5.9.3` — это версия, которую пиннит CI
+(`.github/workflows/check.yml`); на 7.0.2 typecheck тоже чистый (измерено
+2026-09-30).
+
 ### Что покрыто тестами
 
 - **Формат запроса** (`test/wire-format.test.ts`) — самое важное: гоняет настоящий
