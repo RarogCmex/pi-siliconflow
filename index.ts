@@ -14,7 +14,10 @@
  * registration and `guessApi`. Conversion / compat / family routing stay in
  * the tree — flip the flag when they ship the route.
  *
- * pi 0.87 actionable boundaries: `message_end` still rewrites the opaque
+ * pi 0.87 actionable boundaries, unchanged on pi 1.0.0 (2026-10-03: `message_end`
+ * still returns a replacement message, `turn_end` still carries
+ * `outcome: completed|aborted|error`, `appendEntry` still exists — compared in the
+ * two hosts' dists): `message_end` still rewrites the opaque
  * 401 into readable text (fast, test-covered), while `turn_end` appends a
  * persistent `custom_message` with the key-page link and `/login` hint.
  * The message rewrite is transient (error bubble only); the boundary entry
@@ -59,7 +62,7 @@ export default function (pi: ExtensionAPI) {
     return { message: { ...message, errorMessage } };
   });
 
-  // pi 0.87 actionable boundary: keep the `message_end` rewrite (transient,
+  // pi 0.87 actionable boundary (same on 1.0.0): keep the `message_end` rewrite (transient,
   // in the error bubble), and append a persistent helper entry so the fix
   // doesn't disappear on scroll. Guarded to error outcome + this provider +
   // opaque 401/402/403 only; deduped via customType so re-emits don't stack.
